@@ -1,5 +1,5 @@
 schema_version: 1
-feature_version: 1.0-candidate
+feature_version: '1.0'
 claim_ceiling: ANALYTICAL_M1_SYNTHETIC_CONTROLS_WITH_DECLARED_LIMITS
 features:
   - {id: channel_width, path: geometry.width_m, unit: m, domain: [2.2e-7, 2.1e-6], capability: KERNEL_READY, role: GEOMETRY}
@@ -28,4 +28,3 @@ features:
   - {id: pupil_outer_radius, path: observation.pupil_outer_radius, unit: '1', domain: [0.85, 1.0], capability: UNIFIED_OPERATOR_ADAPTER, role: EXPOSURE_CONTROL}
   - {id: detector_sector_center, path: observation.detector_sector_center_rad, unit: rad, domain: [0.0, 6.283185307179586], capability: UNIFIED_OPERATOR_ADAPTER, role: EXPOSURE_CONTROL}
   - {id: detector_sector_width, path: observation.detector_sector_width_rad, unit: rad, domain: [0.5235987755982988, 6.283185307179586], capability: UNIFIED_OPERATOR_ADAPTER, role: EXPOSURE_CONTROL}
-

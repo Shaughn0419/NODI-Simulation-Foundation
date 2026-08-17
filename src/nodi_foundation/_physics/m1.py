@@ -241,7 +241,9 @@ def evaluate_m1(state: SimulationState) -> M1Primitives:
     )
     polarizability_phase = cmath.phase(polarizability) - cmath.phase(base_polarizability)
     phase = BASE_C_PHASE + (channel_phase - base_channel_phase) + position_phase
-    phase += polarizability_phase + operator.detector_sector_center_rad * 0.0
+    sector_fraction_missing = 1.0 - operator.detector_sector_width_rad / (2.0 * math.pi)
+    sector_phase = operator.detector_sector_center_rad * sector_fraction_missing
+    phase += polarizability_phase + sector_phase
     eta = eta_abs * cmath.exp(1j * phase)
     cross = eta * math.sqrt(B_bg_W * S_W)
     values = (B_bg_W, S_W, cross.real, cross.imag, eta.real, eta.imag, eta_abs, phase)

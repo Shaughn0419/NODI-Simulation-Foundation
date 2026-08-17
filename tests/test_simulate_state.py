@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+from dataclasses import replace
 
 import pytest
 
@@ -51,6 +52,27 @@ def test_zero_particle_contrast_is_typed_low_field() -> None:
     assert result.C_i_W == 0.0
     assert result.eta_real is result.eta_imag is result.eta_abs is None
     assert result.C_phase_rad is None
+
+
+def test_partial_detector_sector_center_changes_cross_phase_only() -> None:
+    baseline = SimulationState()
+    partial = replace(
+        baseline,
+        observation=replace(
+            baseline.observation,
+            detector_sector_width_rad=math.pi,
+            detector_sector_center_rad=0.0,
+        ),
+    )
+    shifted = replace(
+        partial,
+        observation=replace(partial.observation, detector_sector_center_rad=math.pi / 2.0),
+    )
+    first = simulate_state(partial)
+    second = simulate_state(shifted)
+    assert second.B_bg_W == first.B_bg_W
+    assert second.S_W == first.S_W
+    assert second.C_phase_rad != first.C_phase_rad
 
 
 def test_observation_angle_is_algebraic() -> None:

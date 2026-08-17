@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software or its datasets, cite this software and the exact release ID."
+title: "NODI Simulation Foundation"
+type: software
+version: 1.0.0
+date-released: 2026-08-18
+authors:
+  - family-names: "Shaughn0419"
+    alias: "Shaughn0419"
+repository-code: "https://github.com/Shaughn0419/NODI-Simulation-Foundation"
+url: "https://github.com/Shaughn0419/NODI-Simulation-Foundation"
+license: "LicenseRef-Proprietary"
+keywords:
+  - NODI
+  - analytical simulation
+  - immutable datasets
+  - scientific software

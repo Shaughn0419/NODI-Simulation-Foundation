@@ -1,0 +1,46 @@
+{
+  "manifest_schema_version": 1,
+  "product": "NODI Simulation Foundation",
+  "version": "1.0.0",
+  "status": "PASS",
+  "release_date": "2026-08-18",
+  "python_requires": ">=3.12,<3.13",
+  "source_archive": {
+    "mode": "GIT_ANNOTATED_TAG",
+    "tag": "v1.0.0",
+    "repository": "https://github.com/Shaughn0419/NODI-Simulation-Foundation",
+    "doi_state": "NOT_ASSIGNED_INTERNAL_TAG_ARCHIVE"
+  },
+  "software_delivery": {
+    "release_id": "6c5737d289949b6512fdd77db53c19707d038ac4b2644173b5b61feb907d720a",
+    "wheel": "nodi_foundation-1.0.0-py3-none-any.whl",
+    "wheel_size_bytes": 31616,
+    "wheel_sha256": "587daecbe1e6c4b395384b6ca127ce5618012af9175e139fb78eb91e793786a3",
+    "license": "RESTRICTED_OWNER_AUTHORIZATION_REQUIRED"
+  },
+  "reference_data": {
+    "receipt_sha256": "d03f760b9b357d361742b95861bb96e2e4ccc5936c67d376090269eb17f7e968",
+    "capability_sprint": "da28445affa4665a3f2d59d298594d670ff3cdf1dbb53c971fe138c0bfcd6a83",
+    "qualification_profile": "4156bf4d1e733af10e5e79e1c0082ee7b30487103ac23844dcffbafe1191ebf8",
+    "quickstart": "a1b20622a0bd23079569135692c3f2f9e733a62a537cecb3faac3a310dcbfb8c",
+    "development_atlas": "3c483f971d21241f39ce5e941a7e4e375f8a952fd3f560dc6bd8fd1b73333cbb",
+    "development_interventions": "e3c620e49d60af6f62201ca67e6a2934eb639b2d988b42d490a59232080a2c01",
+    "evaluation_inputs": "2a1e513b1ff022d93e508d1a9d0bfa94782374ba14cc2ce706d3bc8f78fc2eff",
+    "evaluation_labels": "94930a90743425fdb6f729aacd2cad519012bf18cac1cc8cee99346bbe09c7e2",
+    "label_delivery_state": "SEALED_NOT_DELIVERED"
+  },
+  "acceptance": {
+    "pytest": "17_PASSED",
+    "ruff": "PASS",
+    "mypy_strict": "PASS_15_SOURCE_FILES",
+    "pip_check": "PASS",
+    "clean_external_consumer_smoke": "PASS",
+    "reference_release_validation": "PASS",
+    "development_evaluation_state_overlap": 0,
+    "maximum_workers": 24,
+    "selected_production_workers": 1,
+    "peak_pilot_committed_memory_bytes": 146135396352,
+    "committed_memory_limit_bytes": 210000000000
+  },
+  "claim_ceiling": "ANALYTICAL_M1_SYNTHETIC_CONTROLS_WITH_DECLARED_LIMITS"
+}

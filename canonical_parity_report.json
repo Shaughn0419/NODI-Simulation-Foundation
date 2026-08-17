@@ -2,15 +2,15 @@
   "schema_version": 1,
   "report_id": "NODI_FOUNDATION_N1_CANONICAL_PARITY_V1",
   "status": "PASS_BASELINE_CANONICAL_PARITY",
-  "foundation_source_commit": "WORKTREE_PRECOMMIT_N1",
+  "foundation_physics_base_commit": "ea01b875d031c18541bf740c3db0a21868d2e318",
   "upstream_repository": "Shaughn0419/NODI_ReferenceCoupling_Paper",
   "upstream_commit": "bb27a3ac882344e4ef26663102cd6c0a6882b675",
   "upstream_solution_sha256": "b99c98a7e63a3d662844a35c1a3d2d0fe029e9c89c5b3cc1fc9e8bdf1a01c170",
   "upstream_result_sha256": "d45e839319d6d9b97e89097dd1856c451451ee34bb64d7ff1417db6366ae4f40",
   "foundation_state_id": "6c8198a953bc98d8f9be466e3042d25886f56539e73997d82a1ab723d9624b43",
-  "foundation_result_hash": "ddeb559a5ad8a763433b8733813da357bea76804be7325adb6b5e4ae1a312cf0",
+  "foundation_result_hash": "030a21036c1a359a632f5eb1a53ae51b4149b046e23118b936a6596722d59413",
   "golden_path": "tests/golden/m1_baseline_v1.json",
-  "golden_file_sha256": "c338d486a9cfe4175eba0ca4ebc05e8b43c464a4db2880098de440d0cd6f49e2",
+  "golden_file_sha256": "fb5cee3b46892dac4c4ec81f1ec6c8251e900c2861d973a59344de2ee0a8d477",
   "tolerance": {
     "relative": 1e-12,
     "absolute_W": 1e-18
@@ -32,4 +32,3 @@
   "normal_ci_policy": "COMPACT_GOLDEN_REGRESSION_ONLY",
   "claim_ceiling": "BASELINE_IMPLEMENTATION_PARITY_NOT_FULL_DOMAIN_OR_FULL_WAVE_VALIDATION"
 }
-

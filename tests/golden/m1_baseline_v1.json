@@ -8,11 +8,11 @@
   "applicability_profile_id": "M1_ANALYTICAL_SYNTHETIC_V1",
   "combined_total_W": 0.20274086301102734,
   "config_hash": "9af32a2d6fa85ca1b599825eab0fd2674a45e3d34a6e15f2f37f06615be32da1",
-  "engine_version": "0.1.0",
+  "engine_version": "1.0.0",
   "eta_abs": 0.5439866241436566,
   "eta_imag": 0.29146640787414335,
   "eta_real": -0.45931337921745263,
-  "feature_version": "1.0-candidate",
+  "feature_version": "1.0",
   "inputs": {
     "environment": {
       "fill_refractive_index": 1.33,
@@ -55,7 +55,7 @@
   },
   "numerical_status": "ANALYTICAL_FINITE",
   "operator_qualification_status": "QUALIFIED_CANONICAL_FULL_PUPIL",
-  "result_hash": "ddeb559a5ad8a763433b8733813da357bea76804be7325adb6b5e4ae1a312cf0",
+  "result_hash": "030a21036c1a359a632f5eb1a53ae51b4149b046e23118b936a6596722d59413",
   "schema_version": "1.0",
   "state_id": "6c8198a953bc98d8f9be466e3042d25886f56539e73997d82a1ab723d9624b43",
   "uncertainty": {

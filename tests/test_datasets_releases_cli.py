@@ -27,7 +27,7 @@ def test_state_schema_accepts_canonical_state() -> None:
 
 
 def test_dataset_release_is_deterministic_and_valid(tmp_path) -> None:
-    def build(name: str):
+    def build(name: str, workers: int, chunk_size: int):
         return build_dataset(
             DatasetSpec(
                 output_dir=tmp_path / name,
@@ -38,17 +38,18 @@ def test_dataset_release_is_deterministic_and_valid(tmp_path) -> None:
                     "wavelength": (5.5e-7, 7.0e-7),
                 },
                 seed=17,
-                execution=ExecutionSpec(workers=2, chunk_size=8),
+                execution=ExecutionSpec(workers=workers, chunk_size=chunk_size),
             )
         )
 
-    first = build("first")
-    second = build("second")
+    first = build("first", workers=1, chunk_size=5)
+    second = build("second", workers=2, chunk_size=5)
     assert first.release_id == second.release_id
     assert validate_release(first.path).valid
     table = pq.read_table(first.path / "data.parquet")
     assert table.num_rows == 16
     assert {"state_id", "S_W", "C_r_W", "C_i_W"} <= set(table.column_names)
+    assert len([name for name in table.column_names if name.startswith("derived.")]) == 20
 
 
 def test_pair_release_matches_schema(tmp_path) -> None:
@@ -72,7 +73,7 @@ def test_pair_release_matches_schema(tmp_path) -> None:
 
 def test_cli_info_capabilities_simulate_and_dataset(tmp_path, capsys) -> None:
     assert main(["info"]) == 0
-    assert json.loads(capsys.readouterr().out)["package_version"] == "0.1.0"
+    assert json.loads(capsys.readouterr().out)["package_version"] == "1.0.0"
     assert main(["capabilities"]) == 0
     assert json.loads(capsys.readouterr().out)["feature_count"] == 26
 

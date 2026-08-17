@@ -4,10 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nodi-foundation"
-version = "0.1.0"
+version = "1.0.0"
 description = "Standalone analytical simulation and immutable datasets for NODI research."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
+authors = [{name = "Shaughn0419"}]
+license = {file = "LICENSE"}
 dependencies = [
   "jsonschema>=4.23,<5",
   "numpy>=2.2,<3",
@@ -28,8 +30,17 @@ dev = [
 [project.scripts]
 nodi-foundation = "nodi_foundation.cli:main"
 
+[project.urls]
+Repository = "https://github.com/Shaughn0419/NODI-Simulation-Foundation"
+Documentation = "https://github.com/Shaughn0419/NODI-Simulation-Foundation#readme"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/nodi_foundation"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"schemas" = "nodi_foundation/schemas"
+"examples" = "nodi_foundation/examples"
+"configs/profiles" = "nodi_foundation/profiles"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

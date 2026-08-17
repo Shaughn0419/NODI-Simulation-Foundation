@@ -6,9 +6,10 @@ import copy
 import json
 import math
 import os
+import shutil
 import tempfile
 import warnings
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -20,7 +21,7 @@ from scipy.stats import qmc  # type: ignore[import-untyped]
 from .batch import ExecutionSpec, simulate_batch
 from .capabilities import capabilities
 from .errors import E_DOMAIN_INVALID, FoundationError
-from .models import SimulationState, StateResult
+from .models import ENGINE_VERSION, FEATURE_VERSION, SimulationState, StateResult
 from .releases import DatasetRelease, write_release_manifest
 
 
@@ -144,12 +145,72 @@ def result_row(result: StateResult) -> dict[str, Any]:
             "eta_imag": result.eta_imag,
             "eta_abs": result.eta_abs,
             "numerical_status": result.numerical_status,
+            "applicability_profile_id": result.applicability_profile_id,
             "operator_qualification_status": result.operator_qualification_status,
+            "engine_version": result.engine_version,
+            "schema_version": result.schema_version,
+            "feature_version": result.feature_version,
             "config_hash": result.config_hash,
             "result_hash": result.result_hash,
         }
     )
+    row.update(_derived_descriptors(result.inputs))
     return row
+
+
+def _derived_descriptors(inputs: dict[str, Any]) -> dict[str, float]:
+    geometry = inputs["geometry"]
+    particle = inputs["particle"]
+    position = inputs["position"]
+    source = inputs["source"]
+    environment = inputs["environment"]
+    operator = inputs["observation"]
+    wavelength = float(source["wavelength_m"])
+    waist = float(source["waist_m"])
+    width = float(geometry["width_m"])
+    depth = float(geometry["depth_m"])
+    diameter = float(particle["diameter_m"])
+    fill_index = float(environment["fill_refractive_index"])
+    relative_index = complex(
+        float(particle["refractive_index_real"]),
+        float(particle["refractive_index_imag"]),
+    ) / fill_index
+    source_azimuth = float(source["polarization_azimuth_rad"])
+    source_ellipticity = float(source["ellipticity_rad"])
+    source_dop = float(source["degree_of_polarization"])
+    analyzer_azimuth = float(operator["analyzer_azimuth_rad"])
+    analyzer_ellipticity = float(operator["analyzer_ellipticity_rad"])
+    return {
+        "derived.W_over_lambda": width / wavelength,
+        "derived.H_over_lambda": depth / wavelength,
+        "derived.dp_over_lambda": diameter / wavelength,
+        "derived.H_over_W": depth / width,
+        "derived.W_over_w0": width / waist,
+        "derived.H_over_w0": depth / waist,
+        "derived.mie_size_parameter": math.pi * diameter * fill_index / wavelength,
+        "derived.relative_particle_index_abs": abs(relative_index),
+        "derived.relative_particle_index_phase_rad": math.atan2(
+            relative_index.imag, relative_index.real
+        ),
+        "derived.longitudinal_over_w0": float(position["longitudinal_m"]) / waist,
+        "derived.steric_ratio": diameter / min(width, depth),
+        "derived.wall_fill_contrast": float(environment["wall_refractive_index"]) - fill_index,
+        "derived.normalized_collection_na": float(operator["collection_na"]) / fill_index,
+        "derived.pupil_area_fraction": float(operator["pupil_outer_radius"]) ** 2
+        - float(operator["pupil_inner_radius"]) ** 2,
+        "derived.source_stokes_q": source_dop
+        * math.cos(2.0 * source_ellipticity)
+        * math.cos(2.0 * source_azimuth),
+        "derived.source_stokes_u": source_dop
+        * math.cos(2.0 * source_ellipticity)
+        * math.sin(2.0 * source_azimuth),
+        "derived.source_stokes_v": source_dop * math.sin(2.0 * source_ellipticity),
+        "derived.analyzer_stokes_q": math.cos(2.0 * analyzer_ellipticity)
+        * math.cos(2.0 * analyzer_azimuth),
+        "derived.analyzer_stokes_u": math.cos(2.0 * analyzer_ellipticity)
+        * math.sin(2.0 * analyzer_azimuth),
+        "derived.analyzer_stokes_v": math.sin(2.0 * analyzer_ellipticity),
+    }
 
 
 def _write_parquet_atomic(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -165,14 +226,78 @@ def _write_parquet_atomic(path: Path, rows: list[dict[str, Any]]) -> None:
             os.unlink(temporary)
 
 
+def _fragment_matches(path: Path, states: tuple[SimulationState, ...]) -> bool:
+    if not path.is_file():
+        return False
+    try:
+        table = pq.read_table(
+            path,
+            columns=["state_id", "engine_version", "feature_version"],
+        )
+        identifiers = table["state_id"].to_pylist()
+    except (OSError, pa.ArrowException):
+        return False
+    return bool(
+        identifiers == [state.state_id for state in states]
+        and set(table["engine_version"].to_pylist()) == {ENGINE_VERSION}
+        and set(table["feature_version"].to_pylist()) == {FEATURE_VERSION}
+    )
+
+
+def _consolidate_fragments(paths: list[Path], target: Path) -> None:
+    handle, temporary = tempfile.mkstemp(
+        prefix=f".{target.name}.", suffix=".tmp", dir=target.parent
+    )
+    os.close(handle)
+    writer: pq.ParquetWriter | None = None
+    try:
+        for path in paths:
+            table = pq.read_table(path)
+            if writer is None:
+                writer = pq.ParquetWriter(
+                    temporary,
+                    table.schema,
+                    compression="zstd",
+                    use_dictionary=True,
+                )
+            writer.write_table(table)
+        if writer is None:
+            raise RuntimeError("cannot consolidate an empty dataset")
+        writer.close()
+        writer = None
+        os.replace(temporary, target)
+    finally:
+        if writer is not None:
+            writer.close()
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
 def build_dataset(dataset_spec: DatasetSpec) -> DatasetRelease:
     """Build one deterministic custom dataset and content-addressed release."""
 
     states = sample_states(dataset_spec)
-    batch = simulate_batch(states, execution=dataset_spec.execution)
     dataset_spec.output_dir.mkdir(parents=True, exist_ok=True)
+    work_dir = dataset_spec.output_dir / ".work"
+    work_dir.mkdir(parents=True, exist_ok=True)
+    fragments: list[Path] = []
+    chunk_size = dataset_spec.execution.chunk_size
+    for offset in range(0, len(states), chunk_size):
+        chunk = states[offset : offset + chunk_size]
+        fragment = work_dir / f"part-{offset // chunk_size:08d}.parquet"
+        fragments.append(fragment)
+        if dataset_spec.execution.resume and _fragment_matches(fragment, chunk):
+            continue
+        execution = replace(
+            dataset_spec.execution,
+            chunk_size=len(chunk),
+            output_dir=None,
+        )
+        batch = simulate_batch(chunk, execution=execution)
+        _write_parquet_atomic(fragment, [result_row(result) for result in batch.results])
     data_path = dataset_spec.output_dir / "data.parquet"
-    _write_parquet_atomic(data_path, [result_row(result) for result in batch.results])
+    _consolidate_fragments(fragments, data_path)
+    shutil.rmtree(work_dir)
     metadata = {
         "release_name": dataset_spec.release_name,
         "profile": dataset_spec.profile,
@@ -181,10 +306,6 @@ def build_dataset(dataset_spec: DatasetSpec) -> DatasetRelease:
         "seed": dataset_spec.seed,
         "feature_ranges": {key: list(value) for key, value in dataset_spec.feature_ranges.items()},
         "fixed_values": dataset_spec.fixed_values,
-        "worker_count": dataset_spec.execution.workers,
-        "chunk_size": dataset_spec.execution.chunk_size,
-        "cache_hits": batch.cache_hits,
-        "resumed_chunks": batch.resumed_chunks,
     }
     manifest = write_release_manifest(
         dataset_spec.output_dir,

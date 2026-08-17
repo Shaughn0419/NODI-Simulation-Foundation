@@ -89,7 +89,6 @@ def build_intervention_pairs(pair_spec: PairSpec) -> PairRelease:
         "feature": pair_spec.feature,
         "low_value": pair_spec.low_value,
         "high_value": pair_spec.high_value,
-        "worker_count": pair_spec.execution.workers,
     }
     manifest = write_release_manifest(
         pair_spec.output_dir,
