@@ -1,0 +1,18 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.coverage
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+build/
+dist/
+
+# Local execution inputs and rebuildable outputs.
+/tmp/
+/runs/
+/checkpoints/
+/releases/
+*.log
+
