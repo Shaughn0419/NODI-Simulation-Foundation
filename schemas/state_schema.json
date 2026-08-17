@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Shaughn0419/NODI-Simulation-Foundation/schemas/state_schema.json",
+  "title": "NODI Foundation SimulationState v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["geometry", "particle", "position", "source", "environment", "observation"],
+  "properties": {
+    "geometry": {"type": "object", "additionalProperties": false, "required": ["width_m", "depth_m", "sidewall_angle_deg"], "properties": {"width_m": {"type": "number"}, "depth_m": {"type": "number"}, "sidewall_angle_deg": {"type": "number"}}},
+    "particle": {"type": "object", "additionalProperties": false, "required": ["diameter_m", "refractive_index_real", "refractive_index_imag"], "properties": {"diameter_m": {"type": "number"}, "refractive_index_real": {"type": "number"}, "refractive_index_imag": {"type": "number"}}},
+    "position": {"type": "object", "additionalProperties": false, "required": ["longitudinal_m", "lateral_fraction", "depth_fraction"], "properties": {"longitudinal_m": {"type": "number"}, "lateral_fraction": {"type": "number"}, "depth_fraction": {"type": "number"}}},
+    "source": {"type": "object", "additionalProperties": false, "required": ["wavelength_m", "waist_m", "incident_power_W", "beam_offset_longitudinal_m", "beam_offset_lateral_m", "polarization_azimuth_rad", "ellipticity_rad", "degree_of_polarization"], "properties": {"wavelength_m": {"type": "number"}, "waist_m": {"type": "number"}, "incident_power_W": {"type": "number"}, "beam_offset_longitudinal_m": {"type": "number"}, "beam_offset_lateral_m": {"type": "number"}, "polarization_azimuth_rad": {"type": "number"}, "ellipticity_rad": {"type": "number"}, "degree_of_polarization": {"type": "number"}}},
+    "environment": {"type": "object", "additionalProperties": false, "required": ["fill_refractive_index", "wall_refractive_index"], "properties": {"fill_refractive_index": {"type": "number"}, "wall_refractive_index": {"type": "number"}}},
+    "observation": {"type": "object", "additionalProperties": false, "required": ["collection_na", "analyzer_azimuth_rad", "analyzer_ellipticity_rad", "pupil_inner_radius", "pupil_outer_radius", "detector_sector_center_rad", "detector_sector_width_rad"], "properties": {"collection_na": {"type": "number"}, "analyzer_azimuth_rad": {"type": "number"}, "analyzer_ellipticity_rad": {"type": "number"}, "pupil_inner_radius": {"type": "number"}, "pupil_outer_radius": {"type": "number"}, "detector_sector_center_rad": {"type": "number"}, "detector_sector_width_rad": {"type": "number"}}}
+  }
+}
+

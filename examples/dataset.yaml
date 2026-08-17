@@ -1,0 +1,12 @@
+release_name: NODI-QUICK-CUSTOM-V1
+state_count: 64
+sampling_method: sobol
+seed: 20260818
+feature_ranges:
+  particle_diameter: [4.0e-8, 1.2e-7]
+  particle_lateral: [-0.8, 0.8]
+  wavelength: [5.5e-7, 7.0e-7]
+execution:
+  workers: 4
+  chunk_size: 32
+

@@ -1,9 +1,9 @@
 # NODI Simulation Foundation live handoff
 
 - Product target: `v1.0.0`
-- Active phase: `N2_PRODUCT_SURFACE`
-- Completed phase: `N1_PHYSICS_CORE`
-- Current batch: `N2_API_BATCH_RELEASE_SURFACE`
+- Active phase: `N3_REFERENCE_DATA_PRODUCTS`
+- Completed phases: `N1_PHYSICS_CORE`, `N2_PRODUCT_SURFACE`
+- Current batch: `N3_CAPABILITY_AND_REFERENCE_RELEASES`
 - Foundation base commit: `8c319dcc9d1f6b36fd0af70bf61646385c885220`
 - Physics specification source: Paper 1 analytical M1 at
   `bb27a3ac882344e4ef26663102cd6c0a6882b675`
@@ -15,8 +15,9 @@
 
 ## Current next dependency
 
-Complete the six-entry public API, capability catalogue, schemas, CLI, deterministic
-batch/chunk/resume engine, immutable release validation, and wheel smoke.
+Run one resource/throughput pilot, execute the sole 32,768-state capability
+sprint, freeze the retained catalogue, then generate Quickstart, Development,
+fresh evaluation inputs, intervention anchors, and separately sealed labels.
 
 ## Claim ceiling
 

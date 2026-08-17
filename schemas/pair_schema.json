@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Shaughn0419/NODI-Simulation-Foundation/schemas/pair_schema.json",
+  "title": "NODI Foundation one-axis intervention pair v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["pair_id", "anchor_state_id", "feature", "low_state_id", "high_state_id", "delta_S_W", "delta_C_r_W", "delta_C_i_W", "delta_Y_0_W"],
+  "properties": {
+    "pair_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "anchor_state_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "feature": {"type": "string"},
+    "low_value": {"type": "number"},
+    "high_value": {"type": "number"},
+    "low_state_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "high_state_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "low_S_W": {"type": "number"},
+    "high_S_W": {"type": "number"},
+    "delta_S_W": {"type": "number"},
+    "low_C_r_W": {"type": "number"},
+    "high_C_r_W": {"type": "number"},
+    "delta_C_r_W": {"type": "number"},
+    "low_C_i_W": {"type": "number"},
+    "high_C_i_W": {"type": "number"},
+    "delta_C_i_W": {"type": "number"},
+    "low_Y_0_W": {"type": "number"},
+    "high_Y_0_W": {"type": "number"},
+    "delta_Y_0_W": {"type": "number"}
+  }
+}
+

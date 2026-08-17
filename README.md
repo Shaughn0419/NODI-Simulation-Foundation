@@ -24,9 +24,24 @@ silently clipped, defaulted, or filled with zero.
 
 ## Current status
 
-N1 Physics Core is active. The exact source lineage and rewrite-only migration
-policy are recorded in `source_map.json`; current execution state is summarized
-in `LIVE_HANDOFF.md`.
+N1 Physics Core and N2 Product Surface are complete. The exact source lineage
+and rewrite-only migration policy are recorded in `source_map.json`; current
+execution state is summarized in `LIVE_HANDOFF.md`.
+
+## Install and quickstart
+
+```text
+python -m pip install nodi_foundation-*.whl
+nodi-foundation info
+nodi-foundation capabilities
+nodi-foundation simulate examples/state.yaml --output result.json
+nodi-foundation dataset build examples/dataset.yaml --output release/
+nodi-foundation release validate release/
+```
+
+Python callers can construct `SimulationState()` and call `simulate_state`, or
+pass validated mappings directly. Batch results preserve input order; cache and
+resume never change state or result identities.
 
 ## Scope boundaries
 

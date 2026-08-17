@@ -1,0 +1,1 @@
+"""Packaged product data."""

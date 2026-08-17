@@ -22,6 +22,7 @@ dev = [
   "pytest>=8.3,<9",
   "pytest-xdist>=3.6,<4",
   "ruff>=0.11,<1",
+  "types-PyYAML>=6.0.12",
 ]
 
 [project.scripts]
@@ -45,4 +46,3 @@ select = ["E", "F", "I", "UP"]
 python_version = "3.12"
 strict = true
 files = ["src"]
-

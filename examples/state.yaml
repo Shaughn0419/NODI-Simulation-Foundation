@@ -1,0 +1,33 @@
+geometry:
+  width_m: 8.0e-7
+  depth_m: 5.5e-7
+  sidewall_angle_deg: 90.0
+particle:
+  diameter_m: 1.0e-7
+  refractive_index_real: 1.38
+  refractive_index_imag: 0.0
+position:
+  longitudinal_m: 0.0
+  lateral_fraction: 0.0
+  depth_fraction: 0.5
+source:
+  wavelength_m: 6.6e-7
+  waist_m: 1.0e-6
+  incident_power_W: 1.0
+  beam_offset_longitudinal_m: 0.0
+  beam_offset_lateral_m: 0.0
+  polarization_azimuth_rad: 0.0
+  ellipticity_rad: 0.0
+  degree_of_polarization: 0.0
+environment:
+  fill_refractive_index: 1.33
+  wall_refractive_index: 1.45
+observation:
+  collection_na: 0.9
+  analyzer_azimuth_rad: 0.0
+  analyzer_ellipticity_rad: 0.0
+  pupil_inner_radius: 0.0
+  pupil_outer_radius: 1.0
+  detector_sector_center_rad: 0.0
+  detector_sector_width_rad: 6.283185307179586
+
