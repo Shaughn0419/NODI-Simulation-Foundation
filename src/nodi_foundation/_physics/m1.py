@@ -28,7 +28,7 @@ BASE_DIAMETER_M = 1.0e-7
 BASE_PARTICLE_INDEX = complex(1.38, 0.0)
 BASE_WAVELENGTH_M = 6.6e-7
 BASE_WAIST_M = 1.0e-6
-BASE_POWER_W = 1.0
+BASE_NORMALIZATION_POWER_W = 1.0
 BASE_FILL_INDEX = 1.33
 BASE_WALL_INDEX = 1.45
 BASE_COLLECTION_NA = 0.90
@@ -72,12 +72,15 @@ def _bottom_width(state: SimulationState) -> float:
 
 def _particle_coordinates(state: SimulationState) -> tuple[float, float, float]:
     radius = 0.5 * state.particle.diameter_m
+    effective_radius = radius + state.environment.effective_wall_exclusion_m
     bottom = _bottom_width(state)
-    z = radius + state.position.depth_fraction * (state.geometry.depth_m - 2.0 * radius)
+    z = effective_radius + state.position.depth_fraction * (
+        state.geometry.depth_m - 2.0 * effective_radius
+    )
     width_at_z = bottom + (state.geometry.width_m - bottom) * (z / state.geometry.depth_m)
-    lateral_support = 0.5 * width_at_z - radius
+    lateral_support = 0.5 * width_at_z - effective_radius
     u = state.position.lateral_fraction * lateral_support
-    return state.position.longitudinal_m, u, z
+    return state.position.longitudinal_over_w0 * state.source.waist_m, u, z
 
 
 def _reference_strength(
@@ -201,7 +204,7 @@ def evaluate_scaling_control(state: SimulationState) -> ScalingControlPrimitives
     )
     B_bg_W = (
         BASE_B_BG_W
-        * (source.incident_power_W / BASE_POWER_W)
+        * (source.normalization_power_W / BASE_NORMALIZATION_POWER_W)
         * (reference / base_reference)
         * collection_relative
         * operator_factor
@@ -230,7 +233,7 @@ def evaluate_scaling_control(state: SimulationState) -> ScalingControlPrimitives
     )
     S_W = (
         BASE_S_W
-        * (source.incident_power_W / BASE_POWER_W)
+        * (source.normalization_power_W / BASE_NORMALIZATION_POWER_W)
         * (BASE_WAIST_M / source.waist_m) ** 2
         * (rayleigh / base_rayleigh)
         * gaussian_power

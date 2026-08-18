@@ -11,6 +11,9 @@ from .errors import E_RESOURCE_LIMIT, FoundationError
 
 MAX_WORKERS = 24
 COMMITTED_MEMORY_LIMIT_BYTES = 210_000_000_000
+COMMITTED_MEMORY_SOFT_STOP_BYTES = 206_000_000_000
+COMMITTED_MEMORY_EMERGENCY_STOP_BYTES = 208_000_000_000
+FULL_RUN_LAUNCH_HEADROOM_BYTES = 30_000_000_000
 DEFAULT_WORKER_RESERVE_BYTES = 64 * 1024 * 1024
 
 
@@ -53,13 +56,20 @@ def assert_resource_budget(
     workers: int,
     *,
     worker_reserve_bytes: int = DEFAULT_WORKER_RESERVE_BYTES,
+    launch_headroom_bytes: int = 0,
 ) -> ResourceSnapshot:
     if isinstance(workers, bool) or not isinstance(workers, int) or not 1 <= workers <= MAX_WORKERS:
         raise FoundationError(E_RESOURCE_LIMIT, f"workers must be in [1, {MAX_WORKERS}]")
     if worker_reserve_bytes < 0:
         raise FoundationError(E_RESOURCE_LIMIT, "worker reserve must be nonnegative")
+    if launch_headroom_bytes < 0:
+        raise FoundationError(E_RESOURCE_LIMIT, "launch headroom must be nonnegative")
     committed = system_committed_memory_bytes()
-    projected = None if committed is None else committed + workers * worker_reserve_bytes
+    projected = (
+        None
+        if committed is None
+        else committed + workers * worker_reserve_bytes + launch_headroom_bytes
+    )
     if committed is not None and committed >= COMMITTED_MEMORY_LIMIT_BYTES:
         raise FoundationError(E_RESOURCE_LIMIT, "system committed memory is already at the limit")
     if projected is not None and projected >= COMMITTED_MEMORY_LIMIT_BYTES:

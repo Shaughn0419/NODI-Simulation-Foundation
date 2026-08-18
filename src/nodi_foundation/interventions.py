@@ -7,8 +7,8 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-import pyarrow as pa  # type: ignore[import-untyped]
-import pyarrow.parquet as pq  # type: ignore[import-untyped]
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from .batch import ExecutionSpec, simulate_batch
 from .capabilities import capabilities
@@ -16,9 +16,9 @@ from .datasets import state_with_value
 from .errors import E_DOMAIN_INVALID, FoundationError
 from .models import SimulationState, canonical_sha256
 from .profiles import (
+    FORMAL_CONTROL_REGRESSION_SHA256,
     FORMAL_IMPLEMENTATION_SHA256,
     FORMAL_NUMERICAL_PROFILE_SHA256,
-    FORMAL_PARITY_PANEL_SHA256,
     FORMAL_PROFILE,
     FORMAL_QUALIFICATION_MATRIX_SHA256,
     FORMAL_QUALIFICATION_REPORT_SHA256,
@@ -33,7 +33,7 @@ class PairSpec:
     feature: str
     low_value: float
     high_value: float
-    release_name: str = "NODI-PAIRS-CUSTOM-V3"
+    release_name: str = "NODI-PAIRS-CUSTOM-V4"
     execution: ExecutionSpec = ExecutionSpec()
     feature_catalogue_hash: str | None = None
     qualification_report_hash: str | None = None
@@ -141,13 +141,13 @@ def build_intervention_pairs(pair_spec: PairSpec) -> PairRelease:
             and pair_spec.anchor_states[0].physics_profile_id == FORMAL_PROFILE
             else None
         ),
-        "parity_panel_sha256": (
-            FORMAL_PARITY_PANEL_SHA256
+        "scaling_control_regression_sha256": (
+            FORMAL_CONTROL_REGRESSION_SHA256
             if pair_spec.anchor_states
             and pair_spec.anchor_states[0].physics_profile_id == FORMAL_PROFILE
             else None
         ),
-        "paper2_final_truth_eligible": bool(
+        "formal_reference_label_eligible": bool(
             pair_spec.anchor_states
             and pair_spec.anchor_states[0].physics_profile_id == FORMAL_PROFILE
         ),

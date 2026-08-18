@@ -1,12 +1,16 @@
-profile_id: FORMAL_FIELD_COUPLING_M1_V3_DRY_ETCH
-engine: FORMAL_FIELD_COUPLING_M1_V3_DRY_ETCH
-schema_version: '3.0'
-feature_version: '3.0'
+profile_id: FORMAL_FIELD_COUPLING_M1_V4_DRY_ETCH
+engine: FORMAL_FIELD_COUPLING_M1_V4_DRY_ETCH
+schema_version: '4.0'
+feature_version: '4.0'
 units: SI
 invalid_state_policy: REJECT
-incident_power_semantics: ABSOLUTE_GAUSSIAN_BEAM_POWER_W
+normalization_power_semantics: LINEAR_REFERENCE_NORMALIZATION_NOT_EXPERIMENTAL_EXPOSURE_DOSE
+collection_na_semantics: PHYSICAL_NA_EQUALS_FILL_INDEX_TIMES_SIN_THETA_MAX
+effective_wall_exclusion_semantics: ONE_SIDED_LAYER_SUBTRACTED_ONCE
 fidelity_class: FORMAL_WITH_LIMITS
-claim_ceiling: FIRST_ORDER_FORMAL_FIELD_COUPLING_M1_WITH_DECLARED_LIMITS
+claim_ceiling: FIRST_ORDER_FORMAL_FIELD_COUPLING_M1_IDEALIZED_DRY_ETCH_WITH_DECLARED_LIMITS
 automatic_fast_fallback_allowed: false
 qualification_state: PASS_WITH_LIMITS
-qualification_report_sha256: 1b2059100a3d18260ca3e4c65f9ee9a72095e062063910a3a3651bd92f1b94f3
+qualification_report_sha256: f6eda106983dcd72ac96290bd44f6dc644d4f8bbb8590f9a9248c8de715936e5
+production_pupil_order: [80, 160]
+production_reference_gauss_order_per_axis: 96

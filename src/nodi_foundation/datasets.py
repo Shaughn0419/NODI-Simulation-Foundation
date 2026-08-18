@@ -14,9 +14,9 @@ from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
-import pyarrow as pa  # type: ignore[import-untyped]
-import pyarrow.parquet as pq  # type: ignore[import-untyped]
-from scipy.stats import qmc  # type: ignore[import-untyped]
+import pyarrow as pa
+import pyarrow.parquet as pq
+from scipy.stats import qmc
 
 from .batch import ExecutionSpec, simulate_batch
 from .capabilities import capabilities
@@ -29,9 +29,9 @@ from .models import (
     dry_etch_bottom_width,
 )
 from .profiles import (
+    FORMAL_CONTROL_REGRESSION_SHA256,
     FORMAL_IMPLEMENTATION_SHA256,
     FORMAL_NUMERICAL_PROFILE_SHA256,
-    FORMAL_PARITY_PANEL_SHA256,
     FORMAL_PROFILE,
     FORMAL_QUALIFICATION_MATRIX_SHA256,
     FORMAL_QUALIFICATION_REPORT_SHA256,
@@ -51,7 +51,7 @@ class DatasetSpec:
     profile: str = FORMAL_PROFILE
     feature_catalogue_hash: str | None = None
     qualification_report_hash: str | None = None
-    release_name: str = "NODI-CUSTOM-V3"
+    release_name: str = "NODI-CUSTOM-V4"
     execution: ExecutionSpec = ExecutionSpec()
 
     def __post_init__(self) -> None:
@@ -197,9 +197,23 @@ def _derived_descriptors(inputs: dict[str, Any]) -> dict[str, float]:
     width = float(geometry["width_m"])
     depth = float(geometry["depth_m"])
     diameter = float(particle["diameter_m"])
+    radius = 0.5 * diameter
     angle = float(geometry["sidewall_angle_deg"])
     bottom_width = dry_etch_bottom_width(width, depth, angle)
     fill_index = float(environment["fill_refractive_index"])
+    wall_exclusion = float(environment["effective_wall_exclusion_m"])
+    effective_radius = radius + wall_exclusion
+    particle_depth = effective_radius + float(position["depth_fraction"]) * (
+        depth - 2.0 * effective_radius
+    )
+    local_width = bottom_width + (width - bottom_width) * particle_depth / depth
+    lateral_support = 0.5 * local_width - effective_radius
+    particle_lateral = float(position["lateral_fraction"]) * lateral_support
+    particle_longitudinal = float(position["longitudinal_over_w0"]) * waist
+    beam_longitudinal = float(source["beam_offset_longitudinal_over_w0"]) * waist
+    beam_lateral = float(source["beam_offset_lateral_over_w0"]) * waist
+    local_lateral_clearance = 0.5 * local_width - abs(particle_lateral) - radius
+    vertical_clearance = min(particle_depth - radius, depth - particle_depth - radius)
     relative_index = complex(
         float(particle["refractive_index_real"]),
         float(particle["refractive_index_imag"]),
@@ -216,7 +230,7 @@ def _derived_descriptors(inputs: dict[str, Any]) -> dict[str, float]:
         "derived.H_over_W": depth / width,
         "derived.bottom_width_m": bottom_width,
         "derived.bottom_width_fraction": bottom_width / width,
-        "derived.dry_etch_depth_utilization": (
+        "derived.sidewall_width_consumption_fraction": (
             0.0
             if angle == 90.0
             else 2.0 * depth / (width * math.tan(math.radians(angle)))
@@ -228,12 +242,40 @@ def _derived_descriptors(inputs: dict[str, Any]) -> dict[str, float]:
         "derived.relative_particle_index_phase_rad": math.atan2(
             relative_index.imag, relative_index.real
         ),
-        "derived.longitudinal_over_w0": float(position["longitudinal_m"]) / waist,
-        "derived.steric_ratio": diameter / min(width, depth),
+        "derived.particle_longitudinal_m": particle_longitudinal,
+        "derived.beam_offset_longitudinal_m": beam_longitudinal,
+        "derived.beam_offset_lateral_m": beam_lateral,
+        "derived.longitudinal_beam_separation_over_w0": (
+            particle_longitudinal - beam_longitudinal
+        )
+        / waist,
+        "derived.particle_lateral_m": particle_lateral,
+        "derived.lateral_beam_separation_over_w0": (particle_lateral - beam_lateral)
+        / waist,
+        "derived.particle_depth_m": particle_depth,
+        "derived.local_channel_width_m": local_width,
+        "derived.particle_geometric_confinement_ratio": diameter
+        / min(local_width, depth),
+        "derived.effective_confinement_ratio": (diameter + 2.0 * wall_exclusion)
+        / min(local_width, depth),
+        "derived.local_lateral_surface_clearance_m": local_lateral_clearance,
+        "derived.vertical_surface_clearance_m": vertical_clearance,
+        "derived.minimum_surface_clearance_m": min(
+            local_lateral_clearance, vertical_clearance
+        ),
         "derived.wall_fill_contrast": float(environment["wall_refractive_index"]) - fill_index,
-        "derived.normalized_collection_na": float(operator["collection_na"]) / fill_index,
-        "derived.pupil_area_fraction": float(operator["pupil_outer_radius"]) ** 2
+        "derived.collection_sine_in_fill": float(operator["collection_na"]) / fill_index,
+        "derived.annulus_geometric_area_fraction": float(operator["pupil_outer_radius"]) ** 2
         - float(operator["pupil_inner_radius"]) ** 2,
+        "derived.selected_pupil_geometric_area_fraction": (
+            float(operator["pupil_outer_radius"]) ** 2
+            - float(operator["pupil_inner_radius"]) ** 2
+        )
+        * float(operator["detector_sector_width_rad"])
+        / (2.0 * math.pi),
+        "derived.peak_gaussian_normalization_irradiance_W_m2": 2.0
+        * float(source["normalization_power_W"])
+        / (math.pi * waist**2),
         "derived.source_stokes_q": source_dop
         * math.cos(2.0 * source_ellipticity)
         * math.cos(2.0 * source_azimuth),
@@ -359,10 +401,12 @@ def build_dataset(dataset_spec: DatasetSpec) -> DatasetRelease:
         "qualification_matrix_sha256": (
             FORMAL_QUALIFICATION_MATRIX_SHA256 if dataset_spec.profile == FORMAL_PROFILE else None
         ),
-        "parity_panel_sha256": (
-            FORMAL_PARITY_PANEL_SHA256 if dataset_spec.profile == FORMAL_PROFILE else None
+        "scaling_control_regression_sha256": (
+            FORMAL_CONTROL_REGRESSION_SHA256
+            if dataset_spec.profile == FORMAL_PROFILE
+            else None
         ),
-        "paper2_final_truth_eligible": dataset_spec.profile == FORMAL_PROFILE,
+        "formal_reference_label_eligible": dataset_spec.profile == FORMAL_PROFILE,
         "state_count": dataset_spec.state_count,
         "sampling_method": dataset_spec.sampling_method,
         "seed": dataset_spec.seed,
@@ -423,7 +467,7 @@ def dataset_spec_from_mapping(value: dict[str, Any], *, output_dir: Path) -> Dat
             if value.get("qualification_report_hash") is None
             else str(value["qualification_report_hash"])
         ),
-        release_name=str(value.get("release_name", "NODI-CUSTOM-V3")),
+        release_name=str(value.get("release_name", "NODI-CUSTOM-V4")),
         execution=execution,
     )
 

@@ -1,17 +1,80 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Shaughn0419/NODI-Simulation-Foundation/schemas/state_schema.json",
-  "title": "NODI Foundation SimulationState v3 dry-etch",
+  "title": "NODI Foundation SimulationState v4 dry-etch",
   "type": "object",
   "additionalProperties": false,
   "required": ["geometry", "particle", "position", "source", "environment", "observation", "physics_profile_id"],
   "properties": {
-    "geometry": {"type": "object", "additionalProperties": false, "required": ["width_m", "depth_m", "sidewall_angle_deg"], "properties": {"width_m": {"type": "number"}, "depth_m": {"type": "number"}, "sidewall_angle_deg": {"type": "number"}}},
-    "particle": {"type": "object", "additionalProperties": false, "required": ["diameter_m", "refractive_index_real", "refractive_index_imag"], "properties": {"diameter_m": {"type": "number"}, "refractive_index_real": {"type": "number"}, "refractive_index_imag": {"type": "number"}}},
-    "position": {"type": "object", "additionalProperties": false, "required": ["longitudinal_m", "lateral_fraction", "depth_fraction"], "properties": {"longitudinal_m": {"type": "number"}, "lateral_fraction": {"type": "number"}, "depth_fraction": {"type": "number"}}},
-    "source": {"type": "object", "additionalProperties": false, "required": ["wavelength_m", "waist_m", "incident_power_W", "beam_offset_longitudinal_m", "beam_offset_lateral_m", "polarization_azimuth_rad", "ellipticity_rad", "degree_of_polarization"], "properties": {"wavelength_m": {"type": "number"}, "waist_m": {"type": "number"}, "incident_power_W": {"type": "number"}, "beam_offset_longitudinal_m": {"type": "number"}, "beam_offset_lateral_m": {"type": "number"}, "polarization_azimuth_rad": {"type": "number"}, "ellipticity_rad": {"type": "number"}, "degree_of_polarization": {"type": "number"}}},
-    "environment": {"type": "object", "additionalProperties": false, "required": ["fill_refractive_index", "wall_refractive_index"], "properties": {"fill_refractive_index": {"type": "number"}, "wall_refractive_index": {"type": "number"}}},
-    "observation": {"type": "object", "additionalProperties": false, "required": ["collection_na", "analyzer_azimuth_rad", "analyzer_ellipticity_rad", "pupil_inner_radius", "pupil_outer_radius", "detector_sector_center_rad", "detector_sector_width_rad"], "properties": {"collection_na": {"type": "number"}, "analyzer_azimuth_rad": {"type": "number"}, "analyzer_ellipticity_rad": {"type": "number"}, "pupil_inner_radius": {"type": "number"}, "pupil_outer_radius": {"type": "number"}, "detector_sector_center_rad": {"type": "number"}, "detector_sector_width_rad": {"type": "number"}}},
-    "physics_profile_id": {"enum": ["FORMAL_FIELD_COUPLING_M1_V3_DRY_ETCH", "FAST_SCALING_CONTROL_V1"]}
+    "geometry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width_m", "depth_m", "sidewall_angle_deg"],
+      "properties": {
+        "width_m": {"type": "number", "minimum": 2e-7, "maximum": 2e-6},
+        "depth_m": {"type": "number", "minimum": 2e-7, "maximum": 2e-6},
+        "sidewall_angle_deg": {"type": "number", "minimum": 70, "maximum": 90}
+      }
+    },
+    "particle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["diameter_m", "refractive_index_real", "refractive_index_imag"],
+      "properties": {
+        "diameter_m": {"type": "number", "minimum": 2e-8, "maximum": 2e-7},
+        "refractive_index_real": {"type": "number", "minimum": 1.3, "maximum": 2},
+        "refractive_index_imag": {"type": "number", "minimum": 0, "maximum": 0.2}
+      }
+    },
+    "position": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["longitudinal_over_w0", "lateral_fraction", "depth_fraction"],
+      "properties": {
+        "longitudinal_over_w0": {"type": "number", "minimum": -2, "maximum": 2},
+        "lateral_fraction": {"type": "number", "minimum": -1, "maximum": 1},
+        "depth_fraction": {"type": "number", "minimum": 0.05, "maximum": 0.95}
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wavelength_m", "waist_m", "normalization_power_W", "beam_offset_longitudinal_over_w0", "beam_offset_lateral_over_w0", "polarization_azimuth_rad", "ellipticity_rad", "degree_of_polarization"],
+      "properties": {
+        "wavelength_m": {"type": "number", "minimum": 4e-7, "maximum": 9e-7},
+        "waist_m": {"type": "number", "minimum": 5e-7, "maximum": 2e-6},
+        "normalization_power_W": {"type": "number", "minimum": 0.25, "maximum": 4},
+        "beam_offset_longitudinal_over_w0": {"type": "number", "minimum": -1.5, "maximum": 1.5},
+        "beam_offset_lateral_over_w0": {"type": "number", "minimum": -1.5, "maximum": 1.5},
+        "polarization_azimuth_rad": {"type": "number", "minimum": 0, "exclusiveMaximum": 3.141592653589793},
+        "ellipticity_rad": {"type": "number", "minimum": -0.7853981633974483, "maximum": 0.7853981633974483},
+        "degree_of_polarization": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fill_refractive_index", "wall_refractive_index", "effective_wall_exclusion_m"],
+      "properties": {
+        "fill_refractive_index": {"type": "number", "minimum": 1.3, "maximum": 1.4},
+        "wall_refractive_index": {"type": "number", "minimum": 1.4, "maximum": 1.55},
+        "effective_wall_exclusion_m": {"type": "number", "minimum": 0, "maximum": 2e-8}
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["collection_na", "analyzer_azimuth_rad", "analyzer_ellipticity_rad", "pupil_inner_radius", "pupil_outer_radius", "detector_sector_center_rad", "detector_sector_width_rad"],
+      "properties": {
+        "collection_na": {"type": "number", "minimum": 0.4, "maximum": 1.2},
+        "analyzer_azimuth_rad": {"type": "number", "minimum": 0, "exclusiveMaximum": 3.141592653589793},
+        "analyzer_ellipticity_rad": {"type": "number", "minimum": -0.7853981633974483, "maximum": 0.7853981633974483},
+        "pupil_inner_radius": {"type": "number", "minimum": 0, "maximum": 0.75},
+        "pupil_outer_radius": {"type": "number", "minimum": 0.85, "maximum": 1},
+        "detector_sector_center_rad": {"type": "number", "minimum": 0, "exclusiveMaximum": 6.283185307179586},
+        "detector_sector_width_rad": {"type": "number", "minimum": 0.5235987755982988, "maximum": 6.283185307179586}
+      }
+    },
+    "physics_profile_id": {"enum": ["FORMAL_FIELD_COUPLING_M1_V4_DRY_ETCH", "FAST_SCALING_CONTROL_V1"]}
   }
 }

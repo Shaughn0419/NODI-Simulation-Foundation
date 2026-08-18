@@ -13,13 +13,15 @@ never import another repository at runtime.
   `build_dataset`, `build_intervention_pairs`, `derive_observation`, and
   `validate_release`. Everything under `_physics` is internal.
 - Keep Paper 1/2 version names, XAI metrics/models, publication gates, COMSOL
-  orchestration, dashboards, web servers, and plugin systems out of the v1 core.
+  orchestration, dashboards, web servers, and plugin systems out of the current core.
 - Unsupported or unqualified physics must fail explicitly. Never clip invalid
   states, fill unresolved effects with zero, or promote synthetic controls into
   material, fabrication, experimental, or scientific authority.
 - Source migration is one-time and rewrite-from-specification unless explicit
   copy authorization is recorded. Bind every source use in `source_map.json` and
-  establish parity before removing the upstream comparison harness.
+  establish the declared control regression or local qualification before
+  removing a comparison harness. A corrected formal profile need not preserve
+  obsolete numerical parity.
 
 ## Lean repository and artifact budget
 
@@ -59,6 +61,9 @@ never import another repository at runtime.
 
 - Aggregate workers across Foundation processes must not exceed 24. System
   committed memory must remain below `210000000000` bytes.
+- Reserve 30 GB of committed-memory headroom before a full launch, stop adding
+  work at 206 GB, and treat 208 GB as an emergency stop; these operational
+  thresholds prevent monitoring lag from normalizing a 210 GB overshoot.
 - Prefer bounded parallel execution for independent states or chunks when a
   measured pilot shows useful speedup and safe memory. Do not parallelize small
   work only to consume all workers.
@@ -77,4 +82,3 @@ never import another repository at runtime.
   push promptly, and verify local HEAD equals the remote SHA readback.
 - Update `LIVE_HANDOFF.md` only for a material source-lock, phase, gate, runtime,
   or terminal-result change; do not commit unchanged monitoring state.
-

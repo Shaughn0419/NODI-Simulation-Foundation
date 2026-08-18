@@ -21,10 +21,10 @@ from nodi_foundation.profiles import FAST_CONTROL_PROFILE, FORMAL_PROFILE
 
 def test_formal_baseline_is_independently_recomputed_within_declared_tolerance() -> None:
     result = simulate_state(SimulationState())
-    assert result.B_bg_W == pytest.approx(0.20297283613317754, rel=5.0e-2)
-    assert result.S_W == pytest.approx(3.1501989107668475e-7, rel=5.0e-2)
-    assert result.C_r_W == pytest.approx(-0.00011614407102063403, rel=5.0e-2)
-    assert result.C_i_W == pytest.approx(7.370152211533342e-5, rel=5.0e-2)
+    assert result.B_bg_W == pytest.approx(0.20122639744093432, rel=2.0e-12)
+    assert result.S_W == pytest.approx(2.0097919009591464e-7, rel=2.0e-12)
+    assert result.C_r_W == pytest.approx(-0.00011748292339078323, rel=2.0e-12)
+    assert result.C_i_W == pytest.approx(7.026881918021652e-5, rel=2.0e-12)
     assert result.Y_0_W == pytest.approx(result.S_W + 2.0 * result.C_r_W)
     assert result.combined_total_W == pytest.approx(result.B_bg_W + result.Y_0_W)
     assert result.physics_profile_id == FORMAL_PROFILE
@@ -94,12 +94,9 @@ def test_observation_angle_is_algebraic() -> None:
     )
 
 
-def test_invalid_geometry_and_na_fail_closed() -> None:
+def test_out_of_domain_na_fails_closed() -> None:
     with pytest.raises(FoundationError, match="E_DOMAIN_INVALID"):
-        SimulationState(
-            environment=EnvironmentState(fill_refractive_index=1.33, wall_refractive_index=1.40),
-            observation=SimulationState().observation.__class__(collection_na=1.40),
-        )
+        SimulationState().observation.__class__(collection_na=1.21)
 
 
 def test_dry_etch_zero_bottom_is_terminal_and_negative_bottom_is_rejected() -> None:
@@ -109,6 +106,8 @@ def test_dry_etch_zero_bottom_is_terminal_and_negative_bottom_is_rejected() -> N
     apex = SimulationState(geometry=GeometryState(width, apex_depth, angle))
     assert dry_etch_bottom_width(width, apex_depth, angle) == 0.0
     assert simulate_state(apex).numerical_status == "FORMAL_FIELD_FINITE"
+    with pytest.raises(FoundationError, match="positive bottom width"):
+        replace(apex, physics_profile_id=FAST_CONTROL_PROFILE)
 
     with pytest.raises(FoundationError, match="negative bottom width"):
         SimulationState(
@@ -116,17 +115,64 @@ def test_dry_etch_zero_bottom_is_terminal_and_negative_bottom_is_rejected() -> N
         )
 
 
-def test_profile_specific_ranges_and_coupled_particle_fit_fail_closed() -> None:
+def test_current_ranges_and_coupled_particle_fit_fail_closed() -> None:
     expanded = SimulationState(
         geometry=GeometryState(2.0e-6, 2.0e-6, 70.0),
         particle=ParticleState(diameter_m=2.0e-7),
         source=replace(SimulationState().source, wavelength_m=9.0e-7),
     )
     assert expanded.physics_profile_id == FORMAL_PROFILE
-    with pytest.raises(FoundationError, match="depth_m must be"):
-        replace(expanded, physics_profile_id=FAST_CONTROL_PROFILE)
-    with pytest.raises(FoundationError, match="particle does not fit channel depth"):
+    assert replace(expanded, physics_profile_id=FAST_CONTROL_PROFILE).physics_profile_id == (
+        FAST_CONTROL_PROFILE
+    )
+    with pytest.raises(FoundationError, match="particle plus effective clearance"):
         SimulationState(
             geometry=GeometryState(2.0e-7, 2.0e-7, 90.0),
             particle=ParticleState(diameter_m=2.0e-7),
         )
+
+
+def test_wall_exclusion_is_separate_from_particle_radius_and_subtracted_once() -> None:
+    geometry = GeometryState(2.0e-7, 2.0e-7, 90.0)
+    particle = ParticleState(diameter_m=1.6e-7)
+    legal = SimulationState(
+        geometry=geometry,
+        particle=particle,
+        environment=EnvironmentState(effective_wall_exclusion_m=1.9e-8),
+    )
+    assert legal.environment.effective_wall_exclusion_m == 1.9e-8
+    with pytest.raises(FoundationError, match="particle plus effective clearance"):
+        SimulationState(
+            geometry=geometry,
+            particle=particle,
+            environment=EnvironmentState(effective_wall_exclusion_m=2.0e-8),
+        )
+
+
+def test_periodic_coordinates_have_one_canonical_identity() -> None:
+    base = SimulationState()
+    source_zero = replace(
+        base,
+        source=replace(
+            base.source,
+            polarization_azimuth_rad=0.0,
+            degree_of_polarization=1.0,
+        ),
+    )
+    source_period = replace(
+        base,
+        source=replace(
+            base.source,
+            polarization_azimuth_rad=math.pi,
+            degree_of_polarization=1.0,
+        ),
+    )
+    sector_period = replace(
+        base,
+        observation=replace(
+            base.observation,
+            detector_sector_center_rad=2.0 * math.pi,
+        ),
+    )
+    assert source_zero.state_id == source_period.state_id
+    assert sector_period.state_id == base.state_id

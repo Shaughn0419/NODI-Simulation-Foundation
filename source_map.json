@@ -1,13 +1,13 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "migration_policy": "REIMPLEMENT_FROM_SPECIFICATION_NO_SOURCE_COPY",
   "runtime_cross_repository_dependencies_allowed": false,
   "physics_authority": {
     "repository": "Shaughn0419/NODI_ReferenceCoupling_Paper",
     "commit": "bb27a3ac882344e4ef26663102cd6c0a6882b675",
-    "role": "ANALYTICAL_M1_SPECIFICATION_AND_PARITY_ORACLE",
+    "role": "ANALYTICAL_M1_SPECIFICATION_BASELINE",
     "license_status": "SOURCE_COPY_NOT_AUTHORIZED_REWRITE_ONLY",
-    "claim_ceiling": "PARITY_TARGET_NOT_FOUNDATION_RESULT_AUTHORITY",
+    "claim_ceiling": "BASELINE_ONLY_V4_CORRECTIONS_ARE_QUALIFIED_LOCALLY",
     "sources": [
       {"path": "src/nodi_refcoupling/physical_contracts/quantities.py", "blob": "8137905a550ff443d20e02beaf09c7c99d14c558", "migration": "REIMPLEMENT"},
       {"path": "src/nodi_refcoupling/physical_contracts/frames.py", "blob": "9718986cb8458fd26cffb734efc47689c29a91e9", "migration": "REIMPLEMENT"},
@@ -24,12 +24,14 @@
       {"path": "src/nodi_refcoupling/coupling/model.py", "blob": "b573dbe58adcc10ec30da46f5f65f22dc75091fd", "migration": "REIMPLEMENT"}
     ]
   },
-  "optional_utility_reference": {
+  "design_reference_nodi_simulator": {
     "repository": "Shaughn0419/NODI_Simulator",
     "commit": "96c514d3908ed1bcdd84d342cadf5be1e8a9dd0b",
     "role": "ENGINEERING_PATTERN_REFERENCE_ONLY",
     "license_status": "SOURCE_COPY_NOT_AUTHORIZED_REWRITE_ONLY",
     "sources": [
+      {"path": "docs/realism_v2/physics_spec.md", "blob": "779d7e1444c5881d832ca683da7f86d09bfbb2a2", "use": "PHYSICAL_NA_AND_FILL_MEDIUM_PUPIL_COORDINATE_SEMANTICS"},
+      {"path": "nodi_simulator/data_objects.py", "blob": "250bc8d0ec8c8c9761278047552569e69aa6a8bc", "use": "TYPED_STATE_AND_MATERIAL_SEPARATION_PATTERN"},
       {"path": "nodi_simulator/optional_acceleration.py", "blob": "4768806373b29e4211e32c8a3e2308dfde82566d", "use": "OPTIONAL_ACCELERATION_PATTERN"},
       {"path": "nodi_simulator/realism_v2_io.py", "blob": "051fa21156bf7fca4dca0d4afc34e35f77356a23", "use": "ATOMIC_IO_PATTERN"},
       {"path": "nodi_simulator/recompute_manifest.py", "blob": "cbf4ea0940b24c1466cc4870ef4d88e300cf75d8", "use": "STABLE_IDENTITY_PATTERN"},
@@ -42,11 +44,34 @@
       "WHOLESALE_MODULE_MIGRATION"
     ]
   },
-  "parity_contract": {
+  "design_reference_comsol_full_chip": {
+    "repository": "Shaughn0419/Comsol_MicroNanoFullChip_Simulation",
+    "commit": "74cfa70ab9b7f00a5eaf05a9ee191c8ee670db31",
+    "role": "GEOMETRY_AND_FEATURE_SEMANTICS_REFERENCE_ONLY",
+    "license_status": "SOURCE_COPY_NOT_AUTHORIZED_REWRITE_ONLY",
+    "sources": [
+      {"path": "roadmap/NODI_V4_8_SIDEWALL_GEOMETRY_AUTHORITY_V1_20260716.json", "blob": "439864d5202f6b2a727f78e43ddfc7fb08bd78a5", "use": "TOP_WIDTH_DEPTH_ANGLE_FROM_SUBSTRATE_AND_BOTTOM_WIDTH_EQUATION"},
+      {"path": "p0_model_package/model_contracts/shared_v4_8_r2_2/SHARED_ASSUMPTION_CONTRACT.json", "blob": "07089b8ccb8672014c7d9129f7911600195f8392", "use": "DISTINCT_PARTICLE_DIAMETER_LAYER_SEMANTICS"},
+      {"path": "p0_model_package/src/physics_formulas.py", "blob": "238de7db888de1261f297bbb6c255bd3c9b9ee99", "use": "ONE_SIDED_WALL_EXCLUSION_AND_SINGLE_SUBTRACTION_PATTERN"},
+      {"path": "p0_model_package/model_contracts/wall_state_schema.csv", "blob": "041ef9ca45c1e662439503ba46ff3dbc3dfee99a", "use": "EXPLICIT_DOUBLE_COUNT_PREVENTION_SEMANTICS"}
+    ],
+    "foundation_decisions": [
+      "ZERO_BOTTOM_WIDTH_IS_LEGAL_PER_USER_DRY_ETCH_TERMINUS_OVERRIDE",
+      "ONE_HOMOGENEOUS_SPHERE_DIAMETER_SERVES_GEOMETRIC_AND_OPTICAL_M1_ROLES",
+      "NO_TRANSPORT_HYDRODYNAMIC_OR_DEFORMABILITY_DIAMETERS_WITHOUT_CONSUMER_PHYSICS"
+    ],
+    "forbidden": [
+      "COMSOL_OR_FULL_CHIP_RESULT_AUTHORITY",
+      "FABRICATION_PROCESS_AUTHORITY",
+      "TRANSPORT_CLOGGING_OR_YIELD_CLAIMS",
+      "UNSOURCED_PEG_ROUGHNESS_OR_DEPOSIT_DEFAULTS"
+    ]
+  },
+  "control_regression_contract": {
     "upstream_runtime_import_in_product": false,
-    "one_time_comparison_required": true,
+    "formal_v4_parity_to_v1_required": false,
+    "fast_scaling_control_regression_required": true,
     "outputs": ["S_W", "C_r_W", "C_i_W", "B_bg_W", "eta_real", "eta_imag"],
-    "normal_ci_after_parity": "COMPACT_REPRESENTATIVE_GOLDEN_SET"
+    "normal_ci": "COMPACT_FAST_CONTROL_GOLDEN_PLUS_FORMAL_V4_CONVERGENCE_PANEL"
   }
 }
-

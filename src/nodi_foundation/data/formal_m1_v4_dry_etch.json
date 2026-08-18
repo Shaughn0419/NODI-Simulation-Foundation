@@ -1,6 +1,6 @@
 {
-  "profile_id": "FORMAL_FIELD_COUPLING_M1_V3_DRY_ETCH",
-  "engine_version": "3.0.0",
+  "profile_id": "FORMAL_FIELD_COUPLING_M1_V4_DRY_ETCH",
+  "engine_version": "4.0.0",
   "source_specification": {
     "repository": "Shaughn0419/NODI_ReferenceCoupling_Paper",
     "commit": "bb27a3ac882344e4ef26663102cd6c0a6882b675",
@@ -8,10 +8,13 @@
   },
   "physics": {
     "time_convention": "EXP_MINUS_I_OMEGA_T",
-    "incident_power_semantics": "ABSOLUTE_GAUSSIAN_BEAM_POWER_W",
+    "normalization_power_semantics": "LINEAR_GAUSSIAN_NORMALIZATION_POWER_W_NOT_EXPOSURE_DOSE",
+    "beam_offset_semantics": "DIMENSIONLESS_RELATIVE_TO_GAUSSIAN_WAIST_W0",
+    "collection_na_semantics": "PHYSICAL_NA_EQUALS_FILL_INDEX_TIMES_SIN_THETA_MAX",
     "material_index_semantics": "EACH_COMPLEX_INDEX_IS_EVALUATED_AT_STATE_WAVELENGTH",
     "geometry_semantics": "IDEALIZED_DRY_ETCH_TOP_WIDTH_DEPTH_ANGLE_FROM_SUBSTRATE",
     "bottom_width_semantics": "NONNEGATIVE_WITH_ZERO_AS_CLOSED_APEX_TERMINUS",
+    "effective_wall_exclusion_semantics": "ONE_SIDED_DECLARED_SURFACE_EXCLUSION_LAYER_SUBTRACTED_ONCE_NOT_UNIVERSALLY_CALIBRATED",
     "channel_length_waist_radii": 12.0,
     "empty_channel_reference": "FINITE_2D_TRAPEZOID_REPLACEMENT_PHASE_SCREEN",
     "particle": "HOMOGENEOUS_SPHERE_COMPLEX_MIE",
@@ -20,8 +23,8 @@
     "coupling": "COMMON_FIELD_B_S_C_TRACE_GAMMA_F_DAGGER_W_F"
   },
   "numerics": {
-    "production_pupil_order": [32, 64],
-    "qualification_pupil_orders": [[16, 32], [24, 48], [32, 64], [40, 80]],
+    "production_pupil_order": [80, 160],
+    "qualification_pupil_orders": [[32, 64], [64, 128], [80, 160], [96, 192]],
     "production_reference_gauss_order_per_axis": 96,
     "qualification_reference_gauss_orders": [64, 96, 128],
     "mie_order_step": 4,
@@ -41,7 +44,8 @@
       "NO_CORNER_ROUNDING_ROUGHNESS_OR_ETCH_PROCESS_PREDICTION",
       "NO_BUILT_IN_MATERIAL_DISPERSION_DATABASE",
       "NO_COMSOL_RUNTIME_OR_EXPERIMENTAL_AUTHORITY",
-      "NO_EVENT_TIME_OR_READOUT_CHAIN"
+      "NO_EVENT_TIME_OR_READOUT_CHAIN",
+      "NO_THERMAL_OR_EXPOSURE_DURATION_MODEL"
     ]
   }
 }

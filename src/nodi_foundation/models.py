@@ -16,9 +16,9 @@ from .errors import (
     FoundationError,
 )
 
-SCHEMA_VERSION = "3.0"
-ENGINE_VERSION = "3.0.0"
-FEATURE_VERSION = "3.0"
+SCHEMA_VERSION = "4.0"
+ENGINE_VERSION = "4.0.0"
+FEATURE_VERSION = "4.0"
 
 BOTTOM_WIDTH_RELATIVE_TOLERANCE = 1.0e-12
 
@@ -53,6 +53,15 @@ def _closed(name: str, value: float, lower: float, upper: float) -> None:
         raise FoundationError(E_DOMAIN_INVALID, f"{name} must be in [{lower}, {upper}]")
 
 
+def _canonical_periodic(name: str, value: float, period: float) -> float:
+    """Validate one period and canonicalize its duplicated upper endpoint."""
+
+    _finite(name, value)
+    if not 0.0 <= value <= period:
+        raise FoundationError(E_DOMAIN_INVALID, f"{name} must be in [0, {period})")
+    return 0.0 if value == period or value == 0.0 else value
+
+
 def raw_bottom_width(width_m: float, depth_m: float, sidewall_angle_deg: float) -> float:
     """Return the signed ideal trapezoid bottom width without clipping."""
 
@@ -81,8 +90,8 @@ class GeometryState:
     sidewall_angle_deg: float = 90.0
 
     def __post_init__(self) -> None:
-        _closed("width_m", self.width_m, 2.0e-7, 2.1e-6)
-        _closed("depth_m", self.depth_m, 6.0e-8, 2.0e-6)
+        _closed("width_m", self.width_m, 2.0e-7, 2.0e-6)
+        _closed("depth_m", self.depth_m, 2.0e-7, 2.0e-6)
         _closed("sidewall_angle_deg", self.sidewall_angle_deg, 70.0, 90.0)
 
 
@@ -100,12 +109,12 @@ class ParticleState:
 
 @dataclass(frozen=True, slots=True)
 class PositionState:
-    longitudinal_m: float = 0.0
+    longitudinal_over_w0: float = 0.0
     lateral_fraction: float = 0.0
     depth_fraction: float = 0.5
 
     def __post_init__(self) -> None:
-        _finite("longitudinal_m", self.longitudinal_m)
+        _closed("longitudinal_over_w0", self.longitudinal_over_w0, -2.0, 2.0)
         _closed("lateral_fraction", self.lateral_fraction, -1.0, 1.0)
         _closed("depth_fraction", self.depth_fraction, 0.05, 0.95)
 
@@ -114,9 +123,9 @@ class PositionState:
 class SourceState:
     wavelength_m: float = 6.6e-7
     waist_m: float = 1.0e-6
-    incident_power_W: float = 1.0
-    beam_offset_longitudinal_m: float = 0.0
-    beam_offset_lateral_m: float = 0.0
+    normalization_power_W: float = 1.0
+    beam_offset_longitudinal_over_w0: float = 0.0
+    beam_offset_lateral_over_w0: float = 0.0
     polarization_azimuth_rad: float = 0.0
     ellipticity_rad: float = 0.0
     degree_of_polarization: float = 0.0
@@ -124,26 +133,52 @@ class SourceState:
     def __post_init__(self) -> None:
         _closed("wavelength_m", self.wavelength_m, 4.0e-7, 9.0e-7)
         _closed("waist_m", self.waist_m, 5.0e-7, 2.0e-6)
-        _closed("incident_power_W", self.incident_power_W, 0.25, 4.0)
-        _finite("beam_offset_longitudinal_m", self.beam_offset_longitudinal_m)
-        _finite("beam_offset_lateral_m", self.beam_offset_lateral_m)
-        if abs(self.beam_offset_longitudinal_m) > 1.5 * self.waist_m:
-            raise FoundationError(E_DOMAIN_INVALID, "longitudinal beam offset exceeds 1.5 waist")
-        if abs(self.beam_offset_lateral_m) > 1.5 * self.waist_m:
-            raise FoundationError(E_DOMAIN_INVALID, "lateral beam offset exceeds 1.5 waist")
-        _closed("polarization_azimuth_rad", self.polarization_azimuth_rad, 0.0, math.pi)
+        _closed("normalization_power_W", self.normalization_power_W, 0.25, 4.0)
+        _closed(
+            "beam_offset_longitudinal_over_w0",
+            self.beam_offset_longitudinal_over_w0,
+            -1.5,
+            1.5,
+        )
+        _closed(
+            "beam_offset_lateral_over_w0",
+            self.beam_offset_lateral_over_w0,
+            -1.5,
+            1.5,
+        )
+        azimuth = _canonical_periodic(
+            "polarization_azimuth_rad", self.polarization_azimuth_rad, math.pi
+        )
         _closed("ellipticity_rad", self.ellipticity_rad, -math.pi / 4.0, math.pi / 4.0)
         _closed("degree_of_polarization", self.degree_of_polarization, 0.0, 1.0)
+        ellipticity = 0.0 if self.ellipticity_rad == 0.0 else self.ellipticity_rad
+        if self.degree_of_polarization == 0.0:
+            azimuth = 0.0
+            ellipticity = 0.0
+        elif abs(ellipticity) == math.pi / 4.0:
+            azimuth = 0.0
+        object.__setattr__(self, "polarization_azimuth_rad", azimuth)
+        object.__setattr__(self, "ellipticity_rad", ellipticity)
+
+    @property
+    def beam_offset_longitudinal_m(self) -> float:
+        return self.beam_offset_longitudinal_over_w0 * self.waist_m
+
+    @property
+    def beam_offset_lateral_m(self) -> float:
+        return self.beam_offset_lateral_over_w0 * self.waist_m
 
 
 @dataclass(frozen=True, slots=True)
 class EnvironmentState:
     fill_refractive_index: float = 1.33
     wall_refractive_index: float = 1.45
+    effective_wall_exclusion_m: float = 5.0e-9
 
     def __post_init__(self) -> None:
         _closed("fill_refractive_index", self.fill_refractive_index, 1.30, 1.40)
         _closed("wall_refractive_index", self.wall_refractive_index, 1.40, 1.55)
+        _closed("effective_wall_exclusion_m", self.effective_wall_exclusion_m, 0.0, 2.0e-8)
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,7 +193,9 @@ class ObservationOperatorState:
 
     def __post_init__(self) -> None:
         _closed("collection_na", self.collection_na, 0.40, 1.20)
-        _closed("analyzer_azimuth_rad", self.analyzer_azimuth_rad, 0.0, math.pi)
+        analyzer_azimuth = _canonical_periodic(
+            "analyzer_azimuth_rad", self.analyzer_azimuth_rad, math.pi
+        )
         _closed(
             "analyzer_ellipticity_rad",
             self.analyzer_ellipticity_rad,
@@ -166,16 +203,30 @@ class ObservationOperatorState:
             math.pi / 4.0,
         )
         _closed("pupil_inner_radius", self.pupil_inner_radius, 0.0, 0.75)
-        _closed("pupil_outer_radius", self.pupil_outer_radius, 0.1, 1.0)
+        _closed("pupil_outer_radius", self.pupil_outer_radius, 0.85, 1.0)
         if self.pupil_outer_radius < self.pupil_inner_radius + 0.1:
             raise FoundationError(E_DOMAIN_INVALID, "pupil outer radius must exceed inner by 0.1")
-        _closed("detector_sector_center_rad", self.detector_sector_center_rad, 0.0, 2.0 * math.pi)
+        sector_center = _canonical_periodic(
+            "detector_sector_center_rad",
+            self.detector_sector_center_rad,
+            2.0 * math.pi,
+        )
         _closed(
             "detector_sector_width_rad",
             self.detector_sector_width_rad,
             math.pi / 6.0,
             2.0 * math.pi,
         )
+        analyzer_ellipticity = (
+            0.0 if self.analyzer_ellipticity_rad == 0.0 else self.analyzer_ellipticity_rad
+        )
+        if abs(analyzer_ellipticity) == math.pi / 4.0:
+            analyzer_azimuth = 0.0
+        if self.detector_sector_width_rad == 2.0 * math.pi:
+            sector_center = 0.0
+        object.__setattr__(self, "analyzer_azimuth_rad", analyzer_azimuth)
+        object.__setattr__(self, "analyzer_ellipticity_rad", analyzer_ellipticity)
+        object.__setattr__(self, "detector_sector_center_rad", sector_center)
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,7 +237,7 @@ class SimulationState:
     source: SourceState = SourceState()
     environment: EnvironmentState = EnvironmentState()
     observation: ObservationOperatorState = ObservationOperatorState()
-    physics_profile_id: str = "FORMAL_FIELD_COUPLING_M1_V3_DRY_ETCH"
+    physics_profile_id: str = "FORMAL_FIELD_COUPLING_M1_V4_DRY_ETCH"
 
     def __post_init__(self) -> None:
         from .profiles import (
@@ -235,19 +286,25 @@ class SimulationState:
                     E_DOMAIN_INVALID,
                     "formal dry-etch profile requires beam waist at least one wavelength",
                 )
-        if abs(self.position.longitudinal_m) > 2.0 * self.source.waist_m:
-            raise FoundationError(
-                E_DOMAIN_INVALID, "particle longitudinal position exceeds 2 waist"
-            )
         radius = 0.5 * self.particle.diameter_m
-        if 2.0 * radius >= self.geometry.depth_m:
-            raise FoundationError(E_DOMAIN_INVALID, "particle does not fit channel depth")
-        z = radius + self.position.depth_fraction * (self.geometry.depth_m - 2.0 * radius)
+        effective_radius = radius + self.environment.effective_wall_exclusion_m
+        if 2.0 * effective_radius >= self.geometry.depth_m:
+            raise FoundationError(
+                E_DOMAIN_INVALID, "particle plus effective clearance does not fit channel depth"
+            )
+        z = effective_radius + self.position.depth_fraction * (
+            self.geometry.depth_m - 2.0 * effective_radius
+        )
         local_width = bottom + (self.geometry.width_m - bottom) * (z / self.geometry.depth_m)
-        if local_width <= self.particle.diameter_m:
-            raise FoundationError(E_DOMAIN_INVALID, "particle does not fit local channel width")
-        if self.observation.collection_na >= self.environment.wall_refractive_index:
-            raise FoundationError(E_DOMAIN_INVALID, "collection NA must be below exit-index proxy")
+        if local_width <= 2.0 * effective_radius:
+            raise FoundationError(
+                E_DOMAIN_INVALID,
+                "particle plus effective clearance does not fit local channel width",
+            )
+        if self.observation.collection_na >= self.environment.fill_refractive_index:
+            raise FoundationError(
+                E_DOMAIN_INVALID, "collection NA must be below the fill-medium refractive index"
+            )
 
     def to_payload(self) -> dict[str, Any]:
         return asdict(self)
@@ -281,7 +338,7 @@ class SimulationState:
                 environment=EnvironmentState(**dict(value.get("environment", {}))),
                 observation=ObservationOperatorState(**dict(value.get("observation", {}))),
                 physics_profile_id=str(
-                    value.get("physics_profile_id", "FORMAL_FIELD_COUPLING_M1_V3_DRY_ETCH")
+                    value.get("physics_profile_id", "FORMAL_FIELD_COUPLING_M1_V4_DRY_ETCH")
                 ),
             )
         except TypeError as exc:

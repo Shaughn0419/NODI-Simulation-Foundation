@@ -1,41 +1,41 @@
 # NODI Simulation Foundation
 
-NODI Simulation Foundation 3.0.0 is the current standalone simulation and
-content-addressed reference-data product. Its default profile is
-`FORMAL_FIELD_COUPLING_M1_V3_DRY_ETCH`. It has no runtime dependency on Paper 1,
-Paper 2, COMSOL, the legacy simulator, or another checkout.
+NODI Simulation Foundation 4.0.0 is a standalone, deterministic simulator and
+content-addressed reference-data product for an idealized dry-etched glass
+nanochannel. The current physics profile is
+`FORMAL_FIELD_COUPLING_M1_V4_DRY_ETCH`. Runtime operation does not depend on
+Paper 1, Paper 2, COMSOL, or another repository.
 
-Only v3 data and manifests belong in the current product tree. Superseded
-software is recoverable from Git tags and GitHub releases, not duplicated in
-the active branch or local release root.
+The active branch contains only the v4 contract, producer, qualification
+receipt, and compact release manifest. Large reproducible tables are ignored
+under `releases/nodi-v4`; superseded products remain recoverable from Git tags
+and GitHub releases instead of being duplicated in the working tree.
 
-## Dry-etch geometry contract
+## Geometry and input contract
 
-The geometry represents an idealized dry-etched glass nanochannel:
-
-- `width_m` is the top width `W`.
-- `depth_m` is the vertical depth `H`.
-- `sidewall_angle_deg` is the sidewall angle `alpha` measured from the substrate
-  plane.
+- `width_m` is top width `W`, `depth_m` is vertical depth `H`, and
+  `sidewall_angle_deg` is the sidewall angle `alpha` measured from the
+  substrate plane.
 - Bottom width is `b = W - 2 H / tan(alpha)`; at 90 degrees, `b = W`.
-- `b = 0` is a legal closed-apex terminus.
-- A materially negative `b` is rejected. Only relative floating-point roundoff
-  at the zero boundary is canonicalized to zero; geometry is never clipped.
+- `b = 0` is the legal closed-apex dry-etch terminus. A materially negative
+  value is rejected, never clipped. Only numerical roundoff at zero is
+  canonicalized.
+- Current principal bounds are width 0.2-2.0 um, depth 0.2-2.0 um, angle
+  70-90 degrees, particle diameter 20-200 nm, and wavelength 400-900 nm.
 
-The formal input bounds are width 0.2-2.0 um, depth 0.2-2.0 um, angle 70-90
-degrees, particle diameter 20-200 nm, and wavelength 400-900 nm. These are a
-coupled domain, not an unrestricted Cartesian product. A state must also have
-nonnegative bottom width, particle diameter smaller than channel depth and the
-particle's local channel width, and beam waist at least one wavelength.
-Refractive indices supplied in a state are interpreted at that state's
-wavelength; the package does not silently invent material dispersion.
+These bounds define a coupled domain, not an unrestricted Cartesian product.
+The effective particle diameter, including the declared one-sided wall
+exclusion layer, must be strictly smaller than the depth and local channel
+width. Beam waist must be at least one wavelength. A supplied complex
+refractive index is interpreted at that state's wavelength; the package does
+not invent a dispersion curve.
 
 ## Install and quickstart
 
 Python 3.12 is required.
 
 ```text
-python -m pip install nodi_foundation-3.0.0-py3-none-any.whl
+python -m pip install nodi_foundation-4.0.0-py3-none-any.whl
 nodi-foundation info
 nodi-foundation capabilities
 nodi-foundation simulate examples/state.yaml --output result.json
@@ -52,11 +52,11 @@ print(derive_observation(result, theta=0.0))
 print(result.physics_profile_id, result.fidelity_class, result.claim_ceiling)
 ```
 
-`FAST_SCALING_CONTROL_V1` remains callable only as an explicitly selected
-software/scaling control. A formal-domain or numerical failure never falls back
-to it.
+`FAST_SCALING_CONTROL_V1` is callable only when explicitly selected for
+software regression or scaling checks. A formal-domain or numerical failure
+never falls back to it.
 
-## Stable API
+## Stable API and data model
 
 The public compatibility contract contains six functions:
 
@@ -67,66 +67,71 @@ The public compatibility contract contains six functions:
 - `derive_observation(result, theta=...) -> float`
 - `validate_release(path) -> ValidationReport`
 
-Inputs and outputs are immutable, SI-unit models with canonical SHA-256
-identities. Release validation checks paths, sizes, content hashes, exact formal
-qualification bindings, and row-profile consistency. Schemas are in
-[`schemas/state_schema.json`](schemas/state_schema.json) and
-[`schemas/pair_schema.json`](schemas/pair_schema.json).
+Inputs and outputs are immutable SI-unit models with canonical SHA-256
+identities. The v4 catalogue contains 27 primitive features and each reference
+row contains 36 derived physical descriptors. Periodic and polarization
+equivalences are canonicalized before identity generation. Collection NA is
+treated physically through `NA / n_fill`, and `collection_na < n_fill` is
+required.
+
+Release validation checks safe paths, row counts, file sizes and hashes,
+profile identity, qualification bindings, uniqueness, and cross-release
+alignment. Schemas are in [`schemas/state_schema.json`](schemas/state_schema.json)
+and [`schemas/pair_schema.json`](schemas/pair_schema.json).
 
 ## Physics and qualification boundary
 
 The formal engine evaluates an absolutely power-normalized Gaussian source,
 finite idealized trapezoid reference field, homogeneous-sphere complex Mie
 amplitudes, local position field, vector angular pupil, and common-field
-`B/S/C` coupling. It is a first-order M1 reference with declared limits, not
-full Maxwell, COMSOL, experimental, fabrication-process, roughness, calibrated
-detector, event-time, mobility, clogging, yield, or unrestricted physical-truth
-authority.
+`B/S/C` coupling. It is a first-order M1 reference with declared limits. It is
+not full Maxwell, COMSOL, experimental, fabrication-process, roughness,
+calibrated detector, event-time, mobility, clogging, yield, or unrestricted
+physical-truth authority.
 
-The single v3 qualification report is
-[`formal_m1_v3_dry_etch_qualification_report.json`](formal_m1_v3_dry_etch_qualification_report.json),
-SHA-256 `adc804dc447a6688dcd2943e3e43fe5c3aea71b8fdf40f9c64caabcfd225e20a`.
-All 384 coupled-domain cases passed, including eight exact closed-apex cases.
-Maximum reference refinement from order 96 to 128 was 0.0746%; maximum pupil
-refinement from 24x48 to 32x64 was 5.97%, and the strict 32x64 to 40x80 check was
-0.483%. Production therefore uses a 32x64 pupil and order-96 reference
-quadrature. The 4,096-state performance pilot passed with one worker and a
-1,024-state chunk.
+The single current qualification receipt is
+[`formal_m1_v4_dry_etch_qualification_report.json`](formal_m1_v4_dry_etch_qualification_report.json),
+SHA-256 `f6eda106983dcd72ac96290bd44f6dc644d4f8bbb8590f9a9248c8de715936e5`.
+It was produced on Python 3.12.10 with NumPy 2.5.2, SciPy 1.18.0, and PyArrow
+25.0.1. All 384 coupled-domain cases passed, including eight exact closed-apex
+cases. Maximum reference refinement from order 96 to 128 was 0.453%; maximum
+pupil refinement from 64x128 to 80x160 was 1.47%; the strict 80x160 to 96x192
+change was 0.804%. Production therefore uses an 80x160 pupil and order-96
+reference quadrature.
 
-## Current v3 reference products
+## Current reference products
 
-| Product | Rows | Release ID |
-| --- | ---: | --- |
-| NODI-CAPABILITY-SPRINT-V3 | 32,768 | `dd96fb6cd3e15feb05ec35c227b1246e0f344b0b414efc7106fad7dbd69b666e` |
-| NODI-QUICKSTART-V3 | 4,096 | `0b1de1a1c90164b24d4fab6818eb9cc4cc3c126635467e6891762be4d4701729` |
-| NODI-ATLAS-DEV-V3 | 524,288 | `2cda382d4ab489f193b696444077c918bf49dcd55fecce224f653f501e9735da` |
-| Development interventions | 16,384 | `c207f5a5b8ccf730fd72452d1491cdb68c8493e3e7f1400095ec23f11eb36396` |
-| NODI-ATLAS-EVAL-INPUTS-V3 | 65,536 | `1154959dfe2c0fadb6c8996dd424c5d8f4a6d72380ddd1ec3c404c13c1898c73` |
-| NODI-ATLAS-EVAL-LABELS-V3.sealed | 65,536 | `caccd9819838cfb75af40817f4f7188fd252c95d6607876191684cd68e57c3b8` |
+| Product | Information-bearing scale |
+| --- | ---: |
+| Capability sprint | 32,768 states |
+| Quickstart | 4,096 states |
+| Development atlas | 524,288 states from 4,096 independent reference blocks |
+| Development interventions | 16,384 one-axis pairs |
+| Evaluation inputs | 131,072 states from 1,024 independent reference blocks |
+| Evaluation labels | 131,072 aligned, sealed labels |
 
-The capability sprint retained all 26 primitive variables under the declared
-effect rule. `particle_longitudinal` is the frozen primary exposure and
-`particle_diameter` is the different-mechanism replication exposure. Quickstart
-is a no-recompute subset. Development and Evaluation share zero state IDs;
-Evaluation inputs and sealed labels have identical ID order. The label artifact
-remains owner-custody `SEALED_NOT_DELIVERED`.
-
-Exact primary-file hashes and acceptance results are in
-[`v3_release_manifest.json`](v3_release_manifest.json). Large tables are kept
-outside Git under the ignored `releases/nodi-v3` root.
+The development design covers 13 continuous reference dimensions and then
+crosses independent particle, position, and observation strata. Exact linear
+power normalization is fixed at 1 W in formal releases so rescaled duplicate
+states do not inflate the dataset. Development and evaluation have disjoint
+state identities; input and sealed-label rows are exactly aligned. Exact
+release IDs, primary-file hashes, design-balance receipts, and acceptance
+results are in [`v4_release_manifest.json`](v4_release_manifest.json).
 
 ## Reproduction and resources
 
 ```text
-python tools/qualify_formal_m1_v3_dry_etch.py
-python tools/build_reference_releases_v3.py --phase all
+python tools/qualify_formal_m1_v4_dry_etch.py
+python tools/build_reference_releases_v4.py --phase all --workers 4
 ```
 
-Production is deterministic, chunked, recoverable, limited to at most 24
-workers, and must remain below 210,000,000,000 bytes of system committed memory.
-The measured nested pilot selected one worker because its in-process
-content-addressed cache avoids replicated work. Raw logs, fragments,
-checkpoints, build products, and obsolete data versions are not committed.
+The current release execution contract is four worker processes with numerical
+library threads pinned to one per process. The producer is deterministic,
+chunked, resumable, and bounded by a 206 GB submission stop, a 208 GB emergency
+stop, a strict committed-memory ceiling below 210 GB, and 30 GB launch
+headroom. Rebuildable fragments, raw logs, caches, and obsolete release
+versions are not committed.
 
-See [`DATASET_CARD.md`](DATASET_CARD.md) for dataset use and limitations and
-[`LIVE_HANDOFF.md`](LIVE_HANDOFF.md) for the current operational receipt.
+See [`DATASET_CARD.md`](DATASET_CARD.md) for feature semantics, literature
+support, intended use, and limitations, and [`LIVE_HANDOFF.md`](LIVE_HANDOFF.md)
+for the current operational receipt.

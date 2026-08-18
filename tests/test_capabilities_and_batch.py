@@ -12,8 +12,8 @@ from nodi_foundation import (
 
 def test_capability_catalogue_has_exact_candidate_universe() -> None:
     report = capabilities()
-    assert report.feature_count == 26
-    assert len({row["id"] for row in report.features}) == 26
+    assert report.feature_count == 27
+    assert len({row["id"] for row in report.features}) == 27
     assert {row["implementation_status"] for row in report.features} == {
         "FORMAL_DIRECT",
         "FORMAL_WITH_LIMITS",
@@ -29,8 +29,8 @@ def test_batch_order_parallel_and_cache(tmp_path) -> None:
     baseline = SimulationState()
     states = [
         baseline,
-        replace(baseline, source=replace(baseline.source, incident_power_W=0.5)),
-        replace(baseline, source=replace(baseline.source, incident_power_W=2.0)),
+        replace(baseline, source=replace(baseline.source, normalization_power_W=0.5)),
+        replace(baseline, source=replace(baseline.source, normalization_power_W=2.0)),
     ]
     spec = ExecutionSpec(workers=2, chunk_size=2, cache_dir=tmp_path / "cache")
     first = simulate_batch(states, execution=spec)

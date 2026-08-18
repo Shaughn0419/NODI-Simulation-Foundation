@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import runpy
 from pathlib import Path
 
 import jsonschema
@@ -28,6 +29,28 @@ from nodi_foundation.profiles import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_v4_release_boundary_campaigns_have_disjoint_state_identities() -> None:
+    builder = runpy.run_path(str(ROOT / "tools/build_reference_releases_v4.py"))
+    reference_blocks = builder["_reference_blocks"]
+    states_for_references = builder["_states_for_references"]
+    development = reference_blocks(4, builder["DEVELOPMENT_SEED"])
+    evaluation = reference_blocks(
+        4,
+        builder["EVALUATION_SEED"],
+        boundary_policy=builder["EVALUATION_BOUNDARY_POLICY"],
+    )
+    development_ids = {
+        state.state_id
+        for state in states_for_references(tuple(enumerate(development)))
+    }
+    evaluation_ids = {
+        state.state_id
+        for state in states_for_references(tuple(enumerate(evaluation)))
+    }
+    assert len(development_ids) == len(evaluation_ids) == 512
+    assert development_ids.isdisjoint(evaluation_ids)
 
 
 def test_state_schema_accepts_canonical_state() -> None:
@@ -59,7 +82,15 @@ def test_dataset_release_is_deterministic_and_valid(tmp_path) -> None:
     table = pq.read_table(first.path / "data.parquet")
     assert table.num_rows == 16
     assert {"state_id", "S_W", "C_r_W", "C_i_W"} <= set(table.column_names)
-    assert len([name for name in table.column_names if name.startswith("derived.")]) == 23
+    assert len([name for name in table.column_names if name.startswith("derived.")]) == 36
+    for row in table.to_pylist():
+        assert row["derived.effective_confinement_ratio"] >= (
+            row["derived.particle_geometric_confinement_ratio"]
+        )
+        assert row["derived.minimum_surface_clearance_m"] >= (
+            row["environment.effective_wall_exclusion_m"] - 1.0e-21
+        )
+        assert 0.0 < row["derived.collection_sine_in_fill"] < 1.0
 
 
 def test_pair_release_matches_schema(tmp_path) -> None:
@@ -112,7 +143,7 @@ def test_formal_release_requires_and_preserves_qualification_binding(tmp_path) -
     manifest_path = release.path / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest["metadata"]["profile"] = FAST_CONTROL_PROFILE
-    manifest["metadata"]["paper2_final_truth_eligible"] = False
+    manifest["metadata"]["formal_reference_label_eligible"] = False
     body = dict(manifest)
     body.pop("release_id")
     manifest["release_id"] = canonical_sha256(body)
@@ -123,9 +154,9 @@ def test_formal_release_requires_and_preserves_qualification_binding(tmp_path) -
 
 def test_cli_info_capabilities_simulate_and_dataset(tmp_path, capsys) -> None:
     assert main(["info"]) == 0
-    assert json.loads(capsys.readouterr().out)["package_version"] == "3.0.0"
+    assert json.loads(capsys.readouterr().out)["package_version"] == "4.0.0"
     assert main(["capabilities"]) == 0
-    assert json.loads(capsys.readouterr().out)["feature_count"] == 26
+    assert json.loads(capsys.readouterr().out)["feature_count"] == 27
 
     result_path = tmp_path / "result.json"
     assert main(["simulate", str(ROOT / "examples/state.yaml"), "--output", str(result_path)]) == 0

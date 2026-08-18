@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nodi-foundation"
-version = "3.0.0"
+version = "4.0.0"
 description = "Standalone dry-etch formal field-coupling simulation and immutable datasets for NODI research."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
@@ -41,7 +41,7 @@ packages = ["src/nodi_foundation"]
 "schemas" = "nodi_foundation/schemas"
 "examples" = "nodi_foundation/examples"
 "configs/profiles" = "nodi_foundation/profiles"
-"formal_m1_v3_dry_etch_qualification_report.json" = "nodi_foundation/qualification/formal_m1_v3_dry_etch_qualification_report.json"
+"formal_m1_v4_dry_etch_qualification_report.json" = "nodi_foundation/qualification/formal_m1_v4_dry_etch_qualification_report.json"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -54,7 +54,19 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
 
+[tool.ruff.lint.per-file-ignores]
+"tools/build_reference_releases_v4.py" = ["E402", "I001"]
+"tools/qualify_formal_m1_v4_dry_etch.py" = ["E402", "I001"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
 files = ["src"]
+
+[[tool.mypy.overrides]]
+module = [
+  "nodi_foundation.datasets",
+  "nodi_foundation.interventions",
+  "nodi_foundation.releases",
+]
+disable_error_code = ["import-untyped", "no-untyped-call"]

@@ -1,4 +1,4 @@
-"""Qualify the v3 dry-etch formal-M1 profile and run its performance pilot."""
+"""Qualify the current v4 dry-etch formal-M1 profile and run its performance pilot."""
 
 from __future__ import annotations
 
@@ -8,12 +8,18 @@ import hashlib
 import json
 import math
 import pstats
+import platform
 import subprocess
+import sys
 import threading
 from dataclasses import replace
+from importlib.metadata import version as package_version
 from pathlib import Path
 from time import monotonic
 from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
 
 from nodi_foundation import (
     DatasetSpec,
@@ -35,18 +41,18 @@ from nodi_foundation._physics.formal_m1 import (
 )
 from nodi_foundation.datasets import sample_states
 from nodi_foundation.models import canonical_sha256, dry_etch_bottom_width
-from nodi_foundation.profiles import FORMAL_PROFILE
+from nodi_foundation.profiles import FAST_CONTROL_PROFILE, FORMAL_PROFILE
 from nodi_foundation.resources import (
     COMMITTED_MEMORY_LIMIT_BYTES,
     assert_resource_budget,
     system_committed_memory_bytes,
 )
 
-ROOT = Path(__file__).resolve().parents[1]
 PAPER1_ROOT = ROOT.parent / "NODI_ReferenceCoupling_Paper"
 PAPER1_COMMIT = "bb27a3ac882344e4ef26663102cd6c0a6882b675"
 PANEL_TOLERANCE = 0.10
 STRICT_REFINEMENT_TOLERANCE = 0.01
+CONTROL_REGRESSION_TOLERANCE = 2.0e-14
 POWER_FLOOR_W = 1.0e-18
 
 
@@ -115,19 +121,39 @@ def _boundary_panel_states() -> tuple[SimulationState, ...]:
     apex_70_width = 2.0 * 2.0e-6 / math.tan(math.radians(70.0))
     apex_80_width = 2.0 * 2.0e-6 / math.tan(math.radians(80.0))
     rows = (
-        (2.0e-7, 2.0e-7, 90.0, 2.0e-8, 9.0e-7, 9.0e-7, 0.50, 0.0),
-        (2.0e-7, 2.0e-7, 90.0, 1.8e-7, 4.0e-7, 9.0e-7, 0.50, 0.0),
-        (1.0e-6, 0.5e-6 * math.tan(math.radians(70.0)), 70.0, 2.0e-8, 4.0e-7, 9.0e-7, 0.70, 0.0),
-        (5.0e-7, 0.25e-6 * math.tan(math.radians(80.0)), 80.0, 4.0e-8, 9.0e-7, 1.2e-6, 0.60, 0.0),
-        (apex_70_width, 2.0e-6, 70.0, 2.0e-7, 4.0e-7, 1.0e-6, 0.75, 0.0),
-        (apex_80_width, 2.0e-6, 80.0, 1.6e-7, 9.0e-7, 1.5e-6, 0.70, 0.0),
-        (2.0e-6, 2.0e-6, 70.0, 2.0e-7, 9.0e-7, 1.8e-6, 0.50, 0.5),
-        (2.0e-6, 2.0e-6, 90.0, 2.0e-7, 4.0e-7, 1.0e-6, 0.50, -0.5),
+        (2.0e-7, 2.0e-7, 90.0, 2.0e-8, 9.0e-7, 9.0e-7, 0.50, 0.0, 0.0),
+        (2.0e-7, 2.0e-7, 90.0, 1.8e-7, 4.0e-7, 9.0e-7, 0.50, 0.0, 0.0),
+        (
+            1.0e-6,
+            0.5e-6 * math.tan(math.radians(70.0)),
+            70.0,
+            2.0e-8,
+            4.0e-7,
+            9.0e-7,
+            0.70,
+            0.0,
+            2.0e-8,
+        ),
+        (
+            5.0e-7,
+            0.25e-6 * math.tan(math.radians(80.0)),
+            80.0,
+            4.0e-8,
+            9.0e-7,
+            1.2e-6,
+            0.60,
+            0.0,
+            1.0e-8,
+        ),
+        (apex_70_width, 2.0e-6, 70.0, 2.0e-7, 4.0e-7, 1.0e-6, 0.75, 0.0, 2.0e-8),
+        (apex_80_width, 2.0e-6, 80.0, 1.6e-7, 9.0e-7, 1.5e-6, 0.70, 0.0, 2.0e-9),
+        (2.0e-6, 2.0e-6, 70.0, 2.0e-7, 9.0e-7, 1.8e-6, 0.50, 0.5, 2.0e-8),
+        (2.0e-6, 2.0e-6, 90.0, 2.0e-7, 4.0e-7, 1.0e-6, 0.50, -0.5, 2.0e-8),
     )
     operators = (
         ObservationOperatorState(),
         ObservationOperatorState(
-            collection_na=0.95,
+            collection_na=1.20,
             analyzer_azimuth_rad=math.pi / 3.0,
             analyzer_ellipticity_rad=math.pi / 8.0,
             pupil_inner_radius=0.2,
@@ -141,9 +167,20 @@ def _boundary_panel_states() -> tuple[SimulationState, ...]:
             particle=ParticleState(diameter, 1.60, 0.05),
             position=PositionState(0.0, lateral, depth_fraction),
             source=SourceState(wavelength_m=wavelength, waist_m=waist),
+            environment=EnvironmentState(1.30, 1.40, exclusion),
             observation=operator,
         )
-        for width, depth, angle, diameter, wavelength, waist, depth_fraction, lateral in rows
+        for (
+            width,
+            depth,
+            angle,
+            diameter,
+            wavelength,
+            waist,
+            depth_fraction,
+            lateral,
+            exclusion,
+        ) in rows
         for operator in operators
     )
 
@@ -151,7 +188,7 @@ def _boundary_panel_states() -> tuple[SimulationState, ...]:
 def _panel_states() -> tuple[SimulationState, ...]:
     sampled = sample_states(
         DatasetSpec(
-            output_dir=ROOT / "tmp" / "unused-v3-qualification-sample",
+            output_dir=ROOT / "tmp" / "unused-v4-qualification-sample",
             state_count=368,
             feature_ranges={
                 "channel_width": (2.0e-7, 2.0e-6),
@@ -160,13 +197,27 @@ def _panel_states() -> tuple[SimulationState, ...]:
                 "particle_diameter": (2.0e-8, 2.0e-7),
                 "particle_n_real": (1.34, 2.0),
                 "particle_n_imag": (0.0, 0.2),
-                "particle_longitudinal": (-1.5e-6, 1.5e-6),
+                "particle_longitudinal_over_w0": (-1.5, 1.5),
                 "particle_lateral": (-0.8, 0.8),
                 "particle_depth": (0.05, 0.95),
                 "wavelength": (4.0e-7, 9.0e-7),
                 "beam_waist": (9.0e-7, 2.0e-6),
+                "normalization_power": (0.25, 4.0),
+                "beam_offset_longitudinal_over_w0": (-0.8, 0.8),
+                "beam_offset_lateral_over_w0": (-0.8, 0.8),
+                "source_polarization_azimuth": (0.0, math.pi),
+                "source_ellipticity": (-math.pi / 4.0, math.pi / 4.0),
+                "degree_of_polarization": (0.0, 1.0),
                 "fill_refractive_index": (1.30, 1.40),
                 "wall_refractive_index": (1.41, 1.55),
+                "effective_wall_exclusion": (0.0, 2.0e-8),
+                "collection_na": (0.40, 1.20),
+                "analyzer_azimuth": (0.0, math.pi),
+                "analyzer_ellipticity": (-math.pi / 4.0, math.pi / 4.0),
+                "pupil_inner_radius": (0.0, 0.75),
+                "pupil_outer_radius": (0.85, 1.0),
+                "detector_sector_center": (0.0, 2.0 * math.pi),
+                "detector_sector_width": (math.pi / 6.0, 2.0 * math.pi),
             },
             seed=2026081901,
             profile=FORMAL_PROFILE,
@@ -178,35 +229,37 @@ def _panel_states() -> tuple[SimulationState, ...]:
     return tuple(states)
 
 
-def _direct_parity() -> dict[str, Any]:
-    golden_path = ROOT / "tests/golden/m1_baseline_v1.json"
-    upstream = json.loads(golden_path.read_text(encoding="utf-8"))
-    result = simulate_state(SimulationState())
+def _scaling_control_regression() -> dict[str, Any]:
+    golden_path = ROOT / "tests/golden/fast_scaling_control_v1.json"
+    golden = json.loads(golden_path.read_text(encoding="utf-8"))
+    result = simulate_state(SimulationState(physics_profile_id=FAST_CONTROL_PROFILE))
     fields = {
-        "B_bg_W": (result.B_bg_W, float(upstream["B_bg_W"])),
-        "S_W": (result.S_W, float(upstream["S_W"])),
-        "C_r_W": (result.C_r_W, float(upstream["C_r_W"])),
-        "C_i_W": (result.C_i_W, float(upstream["C_i_W"])),
-        "Y_0_W": (result.Y_0_W, float(upstream["Y_0_W"])),
-        "eta_real": (float(result.eta_real), float(upstream["eta_real"])),
-        "eta_imag": (float(result.eta_imag), float(upstream["eta_imag"])),
+        "B_bg_W": (result.B_bg_W, float(golden["B_bg_W"])),
+        "S_W": (result.S_W, float(golden["S_W"])),
+        "C_r_W": (result.C_r_W, float(golden["C_r_W"])),
+        "C_i_W": (result.C_i_W, float(golden["C_i_W"])),
+        "Y_0_W": (result.Y_0_W, float(golden["Y_0_W"])),
+        "eta_real": (float(result.eta_real), float(golden["eta_real"])),
+        "eta_imag": (float(result.eta_imag), float(golden["eta_imag"])),
     }
     rows = {
         name: {
             "foundation": values[0],
-            "paper1": values[1],
+            "frozen_control": values[1],
             "relative_error": _relative(values[0], values[1], 1.0e-10),
         }
         for name, values in fields.items()
     }
-    phase_error = abs(float(result.C_phase_rad) - float(upstream["C_phase_rad"]))
-    passed = all(row["relative_error"] <= PANEL_TOLERANCE for row in rows.values())
-    passed = passed and phase_error <= PANEL_TOLERANCE
+    phase_error = abs(float(result.C_phase_rad) - float(golden["C_phase_rad"]))
+    passed = all(
+        row["relative_error"] <= CONTROL_REGRESSION_TOLERANCE for row in rows.values()
+    )
+    passed = passed and phase_error <= CONTROL_REGRESSION_TOLERANCE
     return {
-        "scope": "FROZEN_CANONICAL_SHARED_STATE_ONLY_NOT_DOMAIN_VALIDATION",
-        "paper1_golden_path": str(golden_path.relative_to(ROOT)).replace("\\", "/"),
-        "paper1_golden_sha256": _sha256(golden_path),
-        "tolerance": PANEL_TOLERANCE,
+        "scope": "FAST_SCALING_CONTROL_SOFTWARE_REGRESSION_NOT_FORMAL_PHYSICS_PARITY",
+        "golden_path": str(golden_path.relative_to(ROOT)).replace("\\", "/"),
+        "golden_sha256": _sha256(golden_path),
+        "tolerance": CONTROL_REGRESSION_TOLERANCE,
         "quantities": rows,
         "phase_absolute_error_rad": phase_error,
         "status": "PASS" if passed else "FAIL",
@@ -225,7 +278,9 @@ def _invariants() -> dict[str, Any]:
             ),
         )
     )
-    doubled = simulate_state(replace(base, source=replace(base.source, incident_power_W=2.0)))
+    doubled = simulate_state(
+        replace(base, source=replace(base.source, normalization_power_W=2.0))
+    )
     first = simulate_state(base)
     power_error = max(
         _relative(getattr(doubled, name), 2.0 * getattr(first, name))
@@ -244,12 +299,39 @@ def _invariants() -> dict[str, Any]:
     clear_formal_caches()
     after = evaluate_formal_m1(base)
     cache_identity = before == after
+    high_na = simulate_state(
+        replace(base, observation=replace(base.observation, collection_na=1.20))
+    )
+    source_zero = replace(
+        base,
+        source=replace(
+            base.source,
+            polarization_azimuth_rad=0.0,
+            degree_of_polarization=1.0,
+        ),
+    )
+    source_period = replace(
+        base,
+        source=replace(
+            base.source,
+            polarization_azimuth_rad=math.pi,
+            degree_of_polarization=1.0,
+        ),
+    )
+    sector_zero = replace(
+        base,
+        observation=replace(base.observation, detector_sector_center_rad=0.0),
+    )
+    sector_period = replace(
+        base,
+        observation=replace(base.observation, detector_sector_center_rad=2.0 * math.pi),
+    )
     checks = {
         "zero_contrast": {
             "status": "PASS" if zero.S_W <= 1.0e-24 and zero.C_r_W == zero.C_i_W == 0.0 else "FAIL",
             "S_W": zero.S_W,
         },
-        "absolute_power_homogeneity": {
+        "normalization_power_homogeneity": {
             "status": "PASS" if power_error <= 2.0e-12 else "FAIL",
             "maximum_relative_error": power_error,
         },
@@ -265,6 +347,20 @@ def _invariants() -> dict[str, Any]:
             "maximum_relative_error": symmetry_error,
         },
         "cache_on_off_identity": {"status": "PASS" if cache_identity else "FAIL"},
+        "physical_na_above_air_index": {
+            "status": "PASS"
+            if high_na.numerical_status == "FORMAL_FIELD_FINITE"
+            and 1.20 / base.environment.fill_refractive_index < 1.0
+            else "FAIL",
+            "physical_collection_na": 1.20,
+            "fill_medium_sine": 1.20 / base.environment.fill_refractive_index,
+        },
+        "periodic_coordinate_identity": {
+            "status": "PASS"
+            if source_zero.state_id == source_period.state_id
+            and sector_zero.state_id == sector_period.state_id
+            else "FAIL"
+        },
     }
     return {
         "checks": checks,
@@ -287,19 +383,19 @@ def _qualification_panel() -> dict[str, Any]:
     numerical_receipts: set[str] = set()
     for index, state in enumerate(_panel_states()):
         coarse = evaluate_formal_m1(
-            state, pupil_order=(16, 32), reference_order=64
+            state, pupil_order=(32, 64), reference_order=64
         )
         production = evaluate_formal_m1(
-            state, pupil_order=(32, 64), reference_order=96
+            state, pupil_order=(80, 160), reference_order=96
         )
         pupil_middle = evaluate_formal_m1(
-            state, pupil_order=(24, 48), reference_order=128
+            state, pupil_order=(64, 128), reference_order=128
         )
         reference_final = evaluate_formal_m1(
-            state, pupil_order=(32, 64), reference_order=128
+            state, pupil_order=(80, 160), reference_order=128
         )
         strict = evaluate_formal_m1(
-            state, pupil_order=(40, 80), reference_order=128
+            state, pupil_order=(96, 192), reference_order=128
         )
         reference_refinement = _field_refinement(production, reference_final)
         pupil_refinement = _field_refinement(pupil_middle, reference_final)
@@ -349,9 +445,9 @@ def _qualification_panel() -> dict[str, Any]:
                 "status": status,
                 "bottom_width_m": bottom_width,
                 "reference_refinement_96_to_128": reference_refinement,
-                "pupil_refinement_24x48_to_32x64": pupil_refinement,
-                "strict_pupil_refinement_32x64_to_40x80": strict_pupil_refinement,
-                "combined_refinement_16x32_r64_to_40x80_r128": combined_refinement,
+                "pupil_refinement_64x128_to_80x160": pupil_refinement,
+                "strict_pupil_refinement_80x160_to_96x192": strict_pupil_refinement,
+                "combined_refinement_32x64_r64_to_96x192_r128": combined_refinement,
                 "cauchy_excess_W2": cauchy_excess,
                 "formal": {
                     "B_bg_W": production.B_bg_W,
@@ -362,22 +458,22 @@ def _qualification_panel() -> dict[str, Any]:
             }
         )
     return {
-        "panel_id": "FORMAL_M1_V3_DRY_ETCH_QUALIFICATION_PANEL",
+        "panel_id": "FORMAL_M1_V4_DRY_ETCH_QUALIFICATION_PANEL",
         "design": "16_EXPLICIT_BOUNDARY_AND_APEX_CASES_PLUS_368_SEEDED_COUPLED_DOMAIN_CASES",
         "state_count": len(rows),
         "case_tolerance": PANEL_TOLERANCE,
         "strict_refinement_tolerance": STRICT_REFINEMENT_TOLERANCE,
         "production_reference_order": 96,
         "strict_reference_order": 128,
-        "production_pupil_order": [32, 64],
-        "strict_pupil_order": [40, 80],
+        "production_pupil_order": [80, 160],
+        "strict_pupil_order": [96, 192],
         "apex_case_count": apex_case_count,
         "maximum_reference_refinement_96_to_128": maximum_reference_refinement,
-        "maximum_pupil_refinement_24x48_to_32x64": maximum_pupil_refinement,
-        "maximum_strict_pupil_refinement_32x64_to_40x80": (
+        "maximum_pupil_refinement_64x128_to_80x160": maximum_pupil_refinement,
+        "maximum_strict_pupil_refinement_80x160_to_96x192": (
             maximum_strict_pupil_refinement
         ),
-        "maximum_combined_refinement_16x32_r64_to_40x80_r128": (
+        "maximum_combined_refinement_32x64_r64_to_96x192_r128": (
             maximum_combined_refinement
         ),
         "maximum_cauchy_excess_W2": maximum_cauchy_excess,
@@ -398,16 +494,16 @@ def _pilot_reference_states() -> tuple[SimulationState, ...]:
         GeometryState(2.0e-6, 2.0e-6, 90.0),
     )
     sources = (
-        SourceState(wavelength_m=4.0e-7, waist_m=9.0e-7, incident_power_W=0.5),
-        SourceState(wavelength_m=6.0e-7, waist_m=1.0e-6, incident_power_W=1.0),
-        SourceState(wavelength_m=7.5e-7, waist_m=1.4e-6, incident_power_W=2.0),
-        SourceState(wavelength_m=9.0e-7, waist_m=1.8e-6, incident_power_W=4.0),
+        SourceState(wavelength_m=4.0e-7, waist_m=9.0e-7, normalization_power_W=0.5),
+        SourceState(wavelength_m=6.0e-7, waist_m=1.0e-6, normalization_power_W=1.0),
+        SourceState(wavelength_m=7.5e-7, waist_m=1.4e-6, normalization_power_W=2.0),
+        SourceState(wavelength_m=9.0e-7, waist_m=1.8e-6, normalization_power_W=4.0),
     )
     environments = (
-        EnvironmentState(1.30, 1.40),
-        EnvironmentState(1.33, 1.45),
-        EnvironmentState(1.36, 1.50),
-        EnvironmentState(1.39, 1.54),
+        EnvironmentState(1.30, 1.40, 2.0e-9),
+        EnvironmentState(1.33, 1.45, 5.0e-9),
+        EnvironmentState(1.36, 1.50, 1.0e-8),
+        EnvironmentState(1.39, 1.54, 2.0e-8),
     )
     return tuple(
         SimulationState(geometry=geometry, source=source, environment=environment)
@@ -426,17 +522,30 @@ def _pilot_states() -> tuple[SimulationState, ...]:
     )
     positions = (
         PositionState(0.0, 0.0, 0.5),
-        PositionState(2.0e-7, -0.5, 0.3),
-        PositionState(-2.0e-7, 0.5, 0.7),
-        PositionState(4.0e-7, 0.0, 0.8),
+        PositionState(0.5, -0.5, 0.3),
+        PositionState(-0.5, 0.5, 0.7),
+        PositionState(1.0, 0.0, 0.8),
     )
     operators = (
-        ObservationOperatorState(),
-        ObservationOperatorState(analyzer_azimuth_rad=math.pi / 4.0),
-        ObservationOperatorState(analyzer_ellipticity_rad=math.pi / 8.0),
+        ObservationOperatorState(collection_na=0.40),
         ObservationOperatorState(
+            collection_na=0.40,
+            analyzer_azimuth_rad=math.pi / 4.0,
+        ),
+        ObservationOperatorState(
+            collection_na=1.20,
+            analyzer_ellipticity_rad=math.pi / 8.0,
+            pupil_inner_radius=0.2,
+            pupil_outer_radius=0.9,
+            detector_sector_width_rad=math.pi,
+        ),
+        ObservationOperatorState(
+            collection_na=1.20,
             analyzer_azimuth_rad=math.pi / 3.0,
             analyzer_ellipticity_rad=-math.pi / 8.0,
+            pupil_inner_radius=0.2,
+            pupil_outer_radius=0.9,
+            detector_sector_width_rad=math.pi,
         ),
     )
     states = tuple(
@@ -509,17 +618,18 @@ def _performance_pilot() -> dict[str, Any]:
     peak_commit = max(samples) if samples else system_committed_memory_bytes()
     estimated = {
         str(count): cold_seconds * count / len(states)
-        for count in (32768, 524288, 65536)
+        for count in (32768, 524288, 131072)
     }
     cache_expectations = (
-        cold_stats["reference"]["misses"] == 64
-        and cold_stats["position_field"]["misses"] == 1024
-        and cold_stats["position_field"]["hits"] == 3072
+        cold_stats["reference"]["misses"] == 128
+        and cold_stats["mie"]["misses"] == 128
+        and cold_stats["position_field"]["misses"] == 2048
+        and cold_stats["position_field"]["hits"] == 2048
         and warm_stats["operator_summary"]["hits"] == 4096
     )
     return {
-        "pilot_id": "FORMAL_M1_V3_DRY_ETCH_NESTED_PERFORMANCE_PILOT",
-        "design": "64_REFERENCE_X_4_PARTICLE_X_4_POSITION_X_4_ANALYZER_OPERATOR",
+        "pilot_id": "FORMAL_M1_V4_DRY_ETCH_NESTED_PERFORMANCE_PILOT",
+        "design": "64_REFERENCE_X_4_PARTICLE_X_4_POSITION_X_4_OBSERVATION_OPERATOR",
         "state_count": len(states),
         "selected_workers": 1,
         "selected_chunk_size": 1024,
@@ -543,10 +653,13 @@ def _performance_pilot() -> dict[str, Any]:
 
 def build_report() -> dict[str, Any]:
     paper1_lock = _verify_paper1_source_lock()
-    direct = _direct_parity()
+    control_regression = _scaling_control_regression()
     invariants = _invariants()
     panel = _qualification_panel()
-    if any(item["status"] != "PASS" for item in (direct, invariants, panel)):
+    if any(
+        item["status"] != "PASS"
+        for item in (control_regression, invariants, panel)
+    ):
         raise RuntimeError("formal qualification failed before performance pilot")
     pilot = _performance_pilot()
     capability = capabilities()
@@ -558,30 +671,36 @@ def build_report() -> dict[str, Any]:
             "state_ids": [row["state_id"] for row in panel["case_results"]],
         }
     )
-    parity_hash = canonical_sha256(
+    control_regression_hash = canonical_sha256(
         {
-            "scope": direct["scope"],
-            "paper1_golden_sha256": direct["paper1_golden_sha256"],
-            "tolerance": direct["tolerance"],
-            "quantity_names": sorted(direct["quantities"]),
+            "scope": control_regression["scope"],
+            "golden_sha256": control_regression["golden_sha256"],
+            "tolerance": control_regression["tolerance"],
+            "quantity_names": sorted(control_regression["quantities"]),
         }
     )
     report: dict[str, Any] = {
-        "report_schema_version": 1,
-        "report_id": "FORMAL_M1_V3_DRY_ETCH_QUALIFICATION_REPORT",
+        "report_schema_version": 2,
+        "report_id": "FORMAL_M1_V4_DRY_ETCH_QUALIFICATION_REPORT",
         "overall_disposition": overall,
         "physics_profile_id": FORMAL_PROFILE,
-        "engine_schema_feature_versions": ["3.0.0", "3.0", "3.0"],
-        "foundation_source_commit": _git_head(ROOT),
+        "engine_schema_feature_versions": ["4.0.0", "4.0", "4.0"],
+        "runtime_environment": {
+            "python": platform.python_version(),
+            "numpy": package_version("numpy"),
+            "scipy": package_version("scipy"),
+            "pyarrow": package_version("pyarrow"),
+        },
+        "foundation_parent_commit": _git_head(ROOT),
         "physics_implementation_sha256": _source_sha256(
             ROOT / "src/nodi_foundation/_physics/formal_m1.py"
         ),
         "numerical_profile_sha256": CONFIG_HASH,
         "feature_catalogue_hash": capability.catalogue_hash,
         "qualification_matrix_sha256": matrix_hash,
-        "parity_panel_sha256": parity_hash,
+        "scaling_control_regression_sha256": control_regression_hash,
         "paper1_source_lock": paper1_lock,
-        "direct_parity": direct,
+        "scaling_control_regression": control_regression,
         "formal_extension_invariants": invariants,
         "qualification_panel": panel,
         "performance_pilot": pilot,
@@ -589,20 +708,28 @@ def build_report() -> dict[str, Any]:
             {
                 "id": row["id"],
                 "status": row["profile_status"][FORMAL_PROFILE],
-                "formal_domain": row.get("formal_domain", row["domain"]),
+                "api_domain": row.get("formal_domain", row["domain"]),
+                "reference_release_domain": row.get(
+                    "reference_release_domain",
+                    row.get("formal_domain", row["domain"]),
+                ),
+                "intervention_selection_eligible": row.get(
+                    "intervention_selection_eligible", True
+                ),
             }
             for row in capability.features
         ],
         "deferred_or_unsupported": [
             "CORE_SHELL_PARTICLE",
-            "COLLECTION_NA_GREATER_THAN_OR_EQUAL_TO_ONE",
+            "COLLECTION_NA_GREATER_THAN_OR_EQUAL_TO_FILL_REFRACTIVE_INDEX",
             "FULL_MAXWELL_OR_COMSOL_RUNTIME",
             "MULTIPLE_SCATTERING_OR_PARTICLE_BACKACTION",
             "EVENT_TIME_NOISE_LOCKIN_OR_READOUT",
+            "THERMAL_OR_EXPOSURE_DURATION_RESPONSE",
             "WAVELENGTH_DISPERSION_DATABASE_OR_AUTOMATIC_MATERIAL_LOOKUP",
             "ETCH_CORNER_ROUNDING_ROUGHNESS_OR_PROCESS_PREDICTION",
         ],
-        "paper2_final_data_generation_eligible": overall == "PASS_WITH_LIMITS",
+        "formal_reference_label_generation_eligible": overall == "PASS_WITH_LIMITS",
         "geometry_contract": {
             "width_semantics": "TOP_WIDTH",
             "sidewall_angle_semantics": "ANGLE_FROM_SUBSTRATE_PLANE",
@@ -611,6 +738,13 @@ def build_report() -> dict[str, Any]:
             "negative_bottom_width": "REJECTED_EXCEPT_FLOATING_POINT_ROUNDOFF_NORMALIZED_TO_ZERO",
         },
         "material_index_semantics": "STATE_REFRACTIVE_INDICES_APPLY_AT_STATE_WAVELENGTH",
+        "normalization_power_semantics": (
+            "LINEAR_REFERENCE_NORMALIZATION_NOT_EXPERIMENTAL_EXPOSURE_DOSE"
+        ),
+        "wall_exclusion_semantics": (
+            "ONE_SIDED_EFFECTIVE_SURFACE_LAYER_SEPARATE_FROM_PARTICLE_RADIUS_"
+            "SUBTRACTED_ONCE_PER_WALL"
+        ),
         "claim_ceiling": (
             "FIRST_ORDER_FORMAL_FIELD_COUPLING_M1_"
             "IDEALIZED_DRY_ETCH_WITH_DECLARED_LIMITS"
@@ -625,7 +759,7 @@ def main() -> int:
     parser.add_argument(
         "--output",
         type=Path,
-        default=ROOT / "formal_m1_v3_dry_etch_qualification_report.json",
+        default=ROOT / "formal_m1_v4_dry_etch_qualification_report.json",
     )
     args = parser.parse_args()
     report = build_report()

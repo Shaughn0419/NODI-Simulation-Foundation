@@ -1,20 +1,27 @@
-"""Build the formal v3 capability freeze and reference-data products."""
+"""Build the current v4 formal capability and reference-data products."""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
 import shutil
+import sys
 import tempfile
 import time
 import warnings
 from collections import defaultdict
 from collections.abc import Iterator
+from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
+from dataclasses import replace
 from functools import cache
 from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
 
 import numpy as np
 import pyarrow as pa
@@ -23,6 +30,7 @@ from scipy.stats import qmc
 
 from nodi_foundation import (
     EnvironmentState,
+    ExecutionSpec,
     GeometryState,
     ObservationOperatorState,
     ParticleState,
@@ -31,6 +39,7 @@ from nodi_foundation import (
     SourceState,
     StateResult,
     capabilities,
+    simulate_batch,
     simulate_state,
     validate_release,
 )
@@ -40,42 +49,56 @@ from nodi_foundation.models import canonical_json, canonical_sha256
 from nodi_foundation.profiles import (
     FORMAL_IMPLEMENTATION_SHA256,
     FORMAL_NUMERICAL_PROFILE_SHA256,
-    FORMAL_PARITY_PANEL_SHA256,
+    FORMAL_CONTROL_REGRESSION_SHA256,
     FORMAL_PROFILE,
     FORMAL_QUALIFICATION_MATRIX_SHA256,
     FORMAL_QUALIFICATION_REPORT_SHA256,
 )
 from nodi_foundation.releases import write_release_manifest
 from nodi_foundation.resources import (
+    COMMITTED_MEMORY_EMERGENCY_STOP_BYTES,
     COMMITTED_MEMORY_LIMIT_BYTES,
+    COMMITTED_MEMORY_SOFT_STOP_BYTES,
+    FULL_RUN_LAUNCH_HEADROOM_BYTES,
     assert_resource_budget,
     system_committed_memory_bytes,
 )
 
-ROOT = Path(__file__).resolve().parents[1]
-RELEASE_ROOT = ROOT / "releases/nodi-v3"
-RECEIPT_PATH = ROOT / "v3_release_manifest.json"
+RELEASE_ROOT = ROOT / "releases/nodi-v4"
+RECEIPT_PATH = ROOT / "v4_release_manifest.json"
 CAPABILITY_REFERENCE_BLOCKS = 256
 CAPABILITY_STATE_COUNT = 32_768
 QUICKSTART_STATE_COUNT = 4_096
 DEVELOPMENT_REFERENCE_BLOCKS = 4_096
 DEVELOPMENT_STATE_COUNT = 524_288
 DEVELOPMENT_PAIR_COUNT = 16_384
-EVALUATION_REFERENCE_BLOCKS = 512
-EVALUATION_STATE_COUNT = 65_536
-EVALUATION_ANCHOR_COUNT = 2_048
-REFERENCE_CHUNK = 64
+EVALUATION_REFERENCE_BLOCKS = 1_024
+EVALUATION_STATE_COUNT = 131_072
+EVALUATION_ANCHOR_COUNT = 4_096
+REFERENCE_CHUNK = 8
 DEVELOPMENT_SEED = 2026081921
 EVALUATION_SEED = 2026081922
-PAIR_CHUNK = 2_048
+PAIR_CHUNK = 512
+WHEEL_NAME = "nodi_foundation-4.0.0-py3-none-any.whl"
+DEFAULT_BOUNDARY_POLICY = "UNPOLARIZED_BOUNDARY_V1"
+EVALUATION_BOUNDARY_POLICY = "PARTIALLY_POLARIZED_BOUNDARY_V1"
+
+PARALLELISM_SELECTION = {
+    "selected_workers": 4,
+    "selection_rule": "USER_SELECTED_CURRENT_RELEASE_EXECUTION_CONTRACT",
+    "selection_date": "2026-08-18",
+    "purpose": "BOUNDED_REPRODUCIBLE_FORMAL_RELEASE_RECOMPUTATION",
+}
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 MECHANISM_GROUPS = {
     "CHANNEL_REFERENCE_GEOMETRY": (
         "channel_width",
         "channel_depth",
         "sidewall_angle",
-        "beam_offset_longitudinal",
-        "beam_offset_lateral",
     ),
     "PARTICLE_OPTICAL_STRENGTH": (
         "particle_diameter",
@@ -83,14 +106,16 @@ MECHANISM_GROUPS = {
         "particle_n_imag",
     ),
     "PARTICLE_POSITION_OVERLAP": (
-        "particle_longitudinal",
+        "particle_longitudinal_over_w0",
         "particle_lateral",
         "particle_depth",
     ),
     "SOURCE_ILLUMINATION_STATE": (
         "wavelength",
         "beam_waist",
-        "incident_power",
+        "normalization_power",
+        "beam_offset_longitudinal_over_w0",
+        "beam_offset_lateral_over_w0",
         "source_polarization_azimuth",
         "source_ellipticity",
         "degree_of_polarization",
@@ -98,6 +123,7 @@ MECHANISM_GROUPS = {
     "MEDIUM_WALL_CONTRAST": (
         "fill_refractive_index",
         "wall_refractive_index",
+        "effective_wall_exclusion",
     ),
     "DETECTOR_SELECTION": (
         "collection_na",
@@ -170,8 +196,8 @@ def _formal_metadata() -> dict[str, Any]:
         "physics_implementation_sha256": FORMAL_IMPLEMENTATION_SHA256,
         "numerical_profile_sha256": FORMAL_NUMERICAL_PROFILE_SHA256,
         "qualification_matrix_sha256": FORMAL_QUALIFICATION_MATRIX_SHA256,
-        "parity_panel_sha256": FORMAL_PARITY_PANEL_SHA256,
-        "paper2_final_truth_eligible": True,
+        "scaling_control_regression_sha256": FORMAL_CONTROL_REGRESSION_SHA256,
+        "formal_reference_label_eligible": True,
     }
 
 
@@ -189,18 +215,31 @@ def _valid_release(directory: Path, release_name: str, count: int) -> bool:
     return metadata.get("release_name") == release_name and observed == count
 
 
-def _boundary_reference_blocks(seed: int) -> tuple[SimulationState, ...]:
+def _boundary_reference_blocks(
+    seed: int,
+    boundary_policy: str = DEFAULT_BOUNDARY_POLICY,
+) -> tuple[SimulationState, ...]:
+    if boundary_policy not in {
+        DEFAULT_BOUNDARY_POLICY,
+        EVALUATION_BOUNDARY_POLICY,
+    }:
+        raise ValueError(f"unsupported boundary policy: {boundary_policy}")
     apex_70_width = 4.0e-6 / math.tan(math.radians(70.0))
     apex_80_width = 4.0e-6 / math.tan(math.radians(80.0))
     rows = (
-        (2.0e-7, 2.0e-7, 90.0, 4.0e-7, 9.0e-7),
-        (apex_70_width, 2.0e-6, 70.0, 6.0e-7, 1.1e-6),
-        (apex_80_width, 2.0e-6, 80.0, 9.0e-7, 1.8e-6),
-        (2.0e-6, 2.0e-6, 90.0, 7.5e-7, 1.4e-6),
+        (2.0e-7, 2.0e-7, 90.0, 4.0e-7, 9.0e-7, 2.0e-9),
+        (apex_70_width, 2.0e-6, 70.0, 6.0e-7, 1.1e-6, 5.0e-9),
+        (apex_80_width, 2.0e-6, 80.0, 9.0e-7, 1.8e-6, 1.0e-8),
+        (2.0e-6, 2.0e-6, 90.0, 7.5e-7, 1.4e-6, 2.0e-8),
     )
     states = []
-    for index, (width, depth, angle, wavelength, waist) in enumerate(rows):
+    for index, (width, depth, angle, wavelength, waist, exclusion) in enumerate(rows):
         phase_fraction = ((seed % 10_007) + 101 * index) % 10_007 / 10_007
+        degree_of_polarization = (
+            0.0
+            if boundary_policy == DEFAULT_BOUNDARY_POLICY
+            else 0.2 * (index + 1)
+        )
         states.append(
             SimulationState(
                 geometry=GeometryState(width, depth, angle),
@@ -208,18 +247,28 @@ def _boundary_reference_blocks(seed: int) -> tuple[SimulationState, ...]:
                 source=SourceState(
                     wavelength_m=wavelength,
                     waist_m=waist,
-                    incident_power_W=0.5 + index,
+                    normalization_power_W=1.0,
                     polarization_azimuth_rad=phase_fraction * math.pi,
+                    degree_of_polarization=degree_of_polarization,
                 ),
-                environment=EnvironmentState(1.30 + 0.02 * index, 1.42 + 0.03 * index),
+                environment=EnvironmentState(
+                    1.30 + 0.02 * index,
+                    1.42 + 0.03 * index,
+                    exclusion,
+                ),
             )
         )
     return tuple(states)
 
 
-def _reference_blocks(count: int, seed: int) -> tuple[SimulationState, ...]:
+def _reference_blocks(
+    count: int,
+    seed: int,
+    *,
+    boundary_policy: str = DEFAULT_BOUNDARY_POLICY,
+) -> tuple[SimulationState, ...]:
     sampler = qmc.Sobol(d=13, scramble=True, seed=seed)
-    accepted = list(_boundary_reference_blocks(seed)[:count])
+    accepted = list(_boundary_reference_blocks(seed, boundary_policy)[:count])
     identifiers = {state.state_id for state in accepted}
     while len(accepted) < count:
         with warnings.catch_warnings():
@@ -230,10 +279,11 @@ def _reference_blocks(count: int, seed: int) -> tuple[SimulationState, ...]:
             depth = 2.0e-7 + float(row[1]) * 1.8e-6
             angle = 70.0 + float(row[2]) * 20.0
             wavelength = 4.0e-7 + float(row[3]) * 5.0e-7
-            waist = wavelength + float(row[4]) * (2.0e-6 - wavelength)
-            power = 0.25 + float(row[5]) * 3.75
-            fill = 1.30 + float(row[11]) * 0.09
-            wall = 1.41 + float(row[12]) * 0.13
+            minimum_waist = max(5.0e-7, wavelength)
+            waist = minimum_waist + float(row[4]) * (2.0e-6 - minimum_waist)
+            fill = 1.30 + float(row[10]) * 0.09
+            wall = 1.41 + float(row[11]) * 0.13
+            exclusion = 2.0e-9 + float(row[12]) * 1.8e-8
             try:
                 state = SimulationState(
                     geometry=GeometryState(width, depth, angle),
@@ -241,16 +291,16 @@ def _reference_blocks(count: int, seed: int) -> tuple[SimulationState, ...]:
                     source=SourceState(
                         wavelength_m=wavelength,
                         waist_m=waist,
-                        incident_power_W=power,
-                        beam_offset_longitudinal_m=(float(row[6]) * 1.6 - 0.8) * waist,
-                        beam_offset_lateral_m=(float(row[7]) * 1.6 - 0.8) * waist,
-                        polarization_azimuth_rad=float(row[8]) * math.pi,
-                        ellipticity_rad=(float(row[9]) - 0.5) * math.pi / 2.0,
-                        degree_of_polarization=float(row[10]),
+                        normalization_power_W=1.0,
+                        beam_offset_longitudinal_over_w0=float(row[5]) * 1.6 - 0.8,
+                        beam_offset_lateral_over_w0=float(row[6]) * 1.6 - 0.8,
+                        polarization_azimuth_rad=float(row[7]) * math.pi,
+                        ellipticity_rad=(float(row[8]) - 0.5) * math.pi / 2.0,
+                        degree_of_polarization=float(row[9]),
                     ),
-                    environment=EnvironmentState(fill, wall),
+                    environment=EnvironmentState(fill, wall, exclusion),
                 )
-                _particle_blocks(state)
+                _particle_blocks(state, len(accepted))
             except FoundationError:
                 continue
             if state.state_id in identifiers:
@@ -262,22 +312,17 @@ def _reference_blocks(count: int, seed: int) -> tuple[SimulationState, ...]:
     return tuple(accepted)
 
 
-def _particle_blocks(reference: SimulationState) -> tuple[ParticleState, ...]:
-    optical_rows = (
-        (1.34, 0.00),
-        (1.38, 0.00),
-        (1.45, 0.01),
-        (1.55, 0.00),
-        (1.38, 0.02),
-        (1.65, 0.05),
-        (1.80, 0.10),
-        (2.00, 0.20),
-    )
+def _particle_blocks(
+    reference: SimulationState,
+    reference_index: int,
+) -> tuple[ParticleState, ...]:
+    real_levels = np.linspace(1.34, 2.00, 8)
+    imaginary_levels = (0.0, 0.002, 0.005, 0.01, 0.02, 0.05, 0.10, 0.20)
 
     def legal(diameter: float) -> bool:
         particle = ParticleState(diameter, 1.60, 0.05)
         try:
-            for position in _position_blocks():
+            for position in _position_blocks(reference_index):
                 replace_state(reference, particle, position, ObservationOperatorState())
         except FoundationError:
             return False
@@ -295,49 +340,221 @@ def _particle_blocks(reference: SimulationState) -> tuple[ParticleState, ...]:
             else:
                 upper = middle
         upper = lower * (1.0 - 1.0e-12)
-    diameters = np.linspace(2.0e-8, upper, len(optical_rows))
+    diameters = np.linspace(2.0e-8, upper, 8)
+    real_shift = reference_index % 8
+    imaginary_shift = (reference_index // 8) % 8
     return tuple(
-        ParticleState(float(diameter), refractive_real, refractive_imag)
-        for diameter, (refractive_real, refractive_imag) in zip(
-            diameters, optical_rows, strict=True
+        ParticleState(
+            float(diameter),
+            float(real_levels[(index + real_shift) % 8]),
+            imaginary_levels[(3 * index + imaginary_shift) % 8],
         )
+        for index, diameter in enumerate(diameters)
     )
 
 
-def _position_blocks() -> tuple[PositionState, ...]:
-    return (
-        PositionState(0.0, 0.0, 0.5),
-        PositionState(3.5e-7, -0.6, 0.25),
-        PositionState(-3.5e-7, 0.6, 0.75),
-        PositionState(1.5e-7, 0.25, 0.9),
+def _position_blocks(reference_index: int) -> tuple[PositionState, ...]:
+    longitudinal = (-1.5, -0.5, 0.5, 1.5)
+    lateral = (-0.75, -0.25, 0.25, 0.75)
+    depth = (0.15, 0.35, 0.65, 0.85)
+    lateral_shift = reference_index % 4
+    depth_shift = (reference_index // 4) % 4
+    return tuple(
+        PositionState(
+            longitudinal[index],
+            lateral[(index + lateral_shift) % 4],
+            depth[(3 * index + depth_shift) % 4],
+        )
+        for index in range(4)
     )
 
 
-def _operator_blocks() -> tuple[ObservationOperatorState, ...]:
-    return (
-        ObservationOperatorState(),
-        ObservationOperatorState(analyzer_azimuth_rad=math.pi / 4.0),
-        ObservationOperatorState(
-            analyzer_azimuth_rad=math.pi / 2.0,
-            pupil_inner_radius=0.2,
-            pupil_outer_radius=0.9,
-            detector_sector_width_rad=math.pi,
-        ),
-        ObservationOperatorState(
-            collection_na=0.75,
-            analyzer_azimuth_rad=math.pi / 3.0,
-            analyzer_ellipticity_rad=math.pi / 8.0,
-            detector_sector_center_rad=3.0 * math.pi / 4.0,
-            detector_sector_width_rad=math.pi / 2.0,
-        ),
+def _radical_inverse(index: int, base: int) -> float:
+    value = 0.0
+    scale = 1.0 / base
+    while index:
+        index, digit = divmod(index, base)
+        value += digit * scale
+        scale /= base
+    return value
+
+
+def _operator_blocks(reference_index: int) -> tuple[ObservationOperatorState, ...]:
+    if reference_index == 0:
+        return (
+            ObservationOperatorState(collection_na=0.40),
+            ObservationOperatorState(collection_na=1.20),
+            ObservationOperatorState(
+                pupil_inner_radius=0.75,
+                pupil_outer_radius=0.85,
+                detector_sector_width_rad=math.pi / 6.0,
+            ),
+            ObservationOperatorState(
+                collection_na=1.20,
+                analyzer_azimuth_rad=math.pi / 3.0,
+                analyzer_ellipticity_rad=math.pi / 8.0,
+                detector_sector_center_rad=3.0 * math.pi / 4.0,
+                detector_sector_width_rad=math.pi / 2.0,
+            ),
+        )
+    primes = (2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61)
+    unit = tuple(_radical_inverse(reference_index + 1, base) for base in primes)
+    grids: list[dict[str, float]] = []
+    for grid_index in range(2):
+        offset = 5 * grid_index
+        outer = 0.85 + 0.15 * unit[offset + 2]
+        inner = min(0.75, outer - 0.1) * unit[offset + 1]
+        grids.append(
+            {
+                "collection_na": 0.40 + 0.80 * unit[offset],
+                "pupil_inner_radius": inner,
+                "pupil_outer_radius": outer,
+                "detector_sector_center_rad": 2.0 * math.pi * unit[offset + 3],
+                "detector_sector_width_rad": (
+                    math.pi / 6.0 + (2.0 * math.pi - math.pi / 6.0) * unit[offset + 4]
+                ),
+            }
+        )
+    operators = []
+    for index in range(4):
+        analyzer_offset = 10 + 2 * index
+        operators.append(
+            ObservationOperatorState(
+                **grids[index // 2],
+                analyzer_azimuth_rad=math.pi * unit[analyzer_offset],
+                analyzer_ellipticity_rad=(unit[analyzer_offset + 1] - 0.5) * math.pi / 2.0,
+            )
+        )
+    return tuple(operators)
+
+
+@cache
+def _design_balance_receipt(reference_count: int) -> dict[str, Any]:
+    reference = SimulationState()
+    optical_pairs: dict[int, set[tuple[float, float]]] = defaultdict(set)
+    for reference_index in range(min(reference_count, 64)):
+        for rank, particle in enumerate(_particle_blocks(reference, reference_index)):
+            optical_pairs[rank].add(
+                (particle.refractive_index_real, particle.refractive_index_imag)
+            )
+    position_pairs: dict[int, set[tuple[float, float]]] = defaultdict(set)
+    for reference_index in range(min(reference_count, 16)):
+        for rank, position in enumerate(_position_blocks(reference_index)):
+            position_pairs[rank].add((position.lateral_fraction, position.depth_fraction))
+    operator_identities: dict[int, set[str]] = defaultdict(set)
+    for reference_index in range(min(reference_count, 64)):
+        for rank, operator in enumerate(_operator_blocks(reference_index)):
+            operator_identities[rank].add(
+                canonical_sha256(
+                    {
+                        "collection_na": operator.collection_na,
+                        "analyzer_azimuth_rad": operator.analyzer_azimuth_rad,
+                        "analyzer_ellipticity_rad": operator.analyzer_ellipticity_rad,
+                        "pupil_inner_radius": operator.pupil_inner_radius,
+                        "pupil_outer_radius": operator.pupil_outer_radius,
+                        "detector_sector_center_rad": operator.detector_sector_center_rad,
+                        "detector_sector_width_rad": operator.detector_sector_width_rad,
+                    }
+                )
+            )
+    minimum_optical_pairs = min(map(len, optical_pairs.values()))
+    minimum_position_pairs = min(map(len, position_pairs.values()))
+    minimum_operator_identities = min(map(len, operator_identities.values()))
+    if minimum_optical_pairs < min(reference_count, 64):
+        raise RuntimeError("particle optical assignments remain rank-confounded")
+    if minimum_position_pairs < min(reference_count, 16):
+        raise RuntimeError("position assignments remain rank-confounded")
+    if minimum_operator_identities < min(reference_count, 64):
+        raise RuntimeError("operator assignments remain fixed across reference blocks")
+    return {
+        "particle_optical_pairs_per_diameter_rank": minimum_optical_pairs,
+        "lateral_depth_pairs_per_longitudinal_rank": minimum_position_pairs,
+        "operator_identities_per_operator_rank": minimum_operator_identities,
+        "status": "PASS_BALANCED_ROTATIONS_REMOVE_FIXED_ONE_TO_ONE_BINDINGS",
+    }
+
+
+def _reference_design_matrix(references: tuple[SimulationState, ...]) -> np.ndarray:
+    rows = []
+    for state in references:
+        source = state.source
+        minimum_waist = max(5.0e-7, source.wavelength_m)
+        rows.append(
+            (
+                (state.geometry.width_m - 2.0e-7) / 1.8e-6,
+                (state.geometry.depth_m - 2.0e-7) / 1.8e-6,
+                (state.geometry.sidewall_angle_deg - 70.0) / 20.0,
+                (source.wavelength_m - 4.0e-7) / 5.0e-7,
+                (source.waist_m - minimum_waist) / (2.0e-6 - minimum_waist),
+                (source.beam_offset_longitudinal_over_w0 + 0.8) / 1.6,
+                (source.beam_offset_lateral_over_w0 + 0.8) / 1.6,
+                source.polarization_azimuth_rad / math.pi,
+                source.ellipticity_rad / (math.pi / 2.0) + 0.5,
+                source.degree_of_polarization,
+                (state.environment.fill_refractive_index - 1.30) / 0.09,
+                (state.environment.wall_refractive_index - 1.41) / 0.13,
+                (state.environment.effective_wall_exclusion_m - 2.0e-9) / 1.8e-8,
+            )
+        )
+    return np.asarray(rows, dtype=np.float64)
+
+
+def _reference_coverage_receipt(
+    references: tuple[SimulationState, ...],
+) -> dict[str, Any]:
+    matrix = _reference_design_matrix(references)
+    stage_counts = tuple(
+        count for count in (256, 512, 1024, 2048, 4096) if count <= len(references)
     )
+    stages = {
+        str(count): {
+            "maximum_absolute_mean_offset_from_half": float(
+                np.max(np.abs(np.mean(matrix[:count], axis=0) - 0.5))
+            ),
+            "minimum_normalized_span": float(
+                np.min(np.ptp(matrix[:count], axis=0))
+            ),
+        }
+        for count in stage_counts
+    }
+    maximum_successive_mean_shift = 0.0
+    for lower, upper in zip(stage_counts, stage_counts[1:], strict=False):
+        maximum_successive_mean_shift = max(
+            maximum_successive_mean_shift,
+            float(
+                np.max(
+                    np.abs(
+                        np.mean(matrix[:lower], axis=0)
+                        - np.mean(matrix[:upper], axis=0)
+                    )
+                )
+            ),
+        )
+    unique_count = len({state.state_id for state in references})
+    final_span = float(np.min(np.ptp(matrix, axis=0)))
+    passed = (
+        unique_count == len(references)
+        and final_span >= 0.95
+        and maximum_successive_mean_shift <= 0.05
+    )
+    if not passed:
+        raise RuntimeError("reference design failed uniqueness or coverage stability")
+    return {
+        "reference_state_count": len(references),
+        "unique_reference_state_count": unique_count,
+        "normalized_dimension_count": int(matrix.shape[1]),
+        "minimum_final_normalized_span": final_span,
+        "maximum_successive_mean_shift": maximum_successive_mean_shift,
+        "stage_summaries": stages,
+        "status": "PASS_UNIQUE_WIDE_AND_STAGE_STABLE_REFERENCE_DESIGN",
+    }
 
 
 def _nested_states(reference_count: int, seed: int) -> Iterator[SimulationState]:
-    for reference in _reference_blocks(reference_count, seed):
-        for particle in _particle_blocks(reference):
-            for position in _position_blocks():
-                for operator in _operator_blocks():
+    for reference_index, reference in enumerate(_reference_blocks(reference_count, seed)):
+        for particle in _particle_blocks(reference, reference_index):
+            for position in _position_blocks(reference_index):
+                for operator in _operator_blocks(reference_index):
                     try:
                         yield replace_state(reference, particle, position, operator)
                     except FoundationError as exc:
@@ -350,27 +567,7 @@ def replace_state(
     position: PositionState,
     operator: ObservationOperatorState,
 ) -> SimulationState:
-    payload = reference.to_payload()
-    payload["particle"] = {
-        "diameter_m": particle.diameter_m,
-        "refractive_index_real": particle.refractive_index_real,
-        "refractive_index_imag": particle.refractive_index_imag,
-    }
-    payload["position"] = {
-        "longitudinal_m": position.longitudinal_m,
-        "lateral_fraction": position.lateral_fraction,
-        "depth_fraction": position.depth_fraction,
-    }
-    payload["observation"] = {
-        "collection_na": operator.collection_na,
-        "analyzer_azimuth_rad": operator.analyzer_azimuth_rad,
-        "analyzer_ellipticity_rad": operator.analyzer_ellipticity_rad,
-        "pupil_inner_radius": operator.pupil_inner_radius,
-        "pupil_outer_radius": operator.pupil_outer_radius,
-        "detector_sector_center_rad": operator.detector_sector_center_rad,
-        "detector_sector_width_rad": operator.detector_sector_width_rad,
-    }
-    return SimulationState.from_mapping(payload)
+    return replace(reference, particle=particle, position=position, observation=operator)
 
 
 def _fragment_matches(path: Path, states: tuple[SimulationState, ...]) -> bool:
@@ -383,6 +580,34 @@ def _fragment_matches(path: Path, states: tuple[SimulationState, ...]) -> bool:
     return table["state_id"].to_pylist() == [state.state_id for state in states] and set(
         table["physics_profile_id"].to_pylist()
     ) == {FORMAL_PROFILE}
+
+
+def _states_for_references(
+    indexed_references: tuple[tuple[int, SimulationState], ...],
+) -> tuple[SimulationState, ...]:
+    states = tuple(
+        replace_state(reference, particle, position, operator)
+        for reference_index, reference in indexed_references
+        for particle in _particle_blocks(reference, reference_index)
+        for position in _position_blocks(reference_index)
+        for operator in _operator_blocks(reference_index)
+    )
+    if len({state.state_id for state in states}) != len(states):
+        raise RuntimeError("nested design produced duplicate state identities")
+    return states
+
+
+def _write_nested_fragment(
+    path_text: str,
+    indexed_references: tuple[tuple[int, SimulationState], ...],
+) -> tuple[str, int]:
+    os.environ["OMP_NUM_THREADS"] = "1"
+    os.environ["MKL_NUM_THREADS"] = "1"
+    os.environ["OPENBLAS_NUM_THREADS"] = "1"
+    states = _states_for_references(indexed_references)
+    rows = [result_row(simulate_state(state)) for state in states]
+    _write_table(Path(path_text), pa.Table.from_pylist(rows))
+    return path_text, len(rows)
 
 
 def _consolidate(paths: list[Path], target: Path) -> None:
@@ -415,31 +640,50 @@ def _build_nested_release(
     release_name: str,
     reference_count: int,
     seed: int,
+    workers: int,
+    boundary_policy: str = DEFAULT_BOUNDARY_POLICY,
 ) -> dict[str, Any]:
     state_count = reference_count * 8 * 4 * 4
     if _valid_release(directory, release_name, state_count):
-        return _read_manifest(directory)
-    assert_resource_budget(1)
-    references = _reference_blocks(reference_count, seed)
+        manifest = _read_manifest(directory)
+        observed_policy = manifest["metadata"]["nested_design"].get(
+            "boundary_reference_policy", DEFAULT_BOUNDARY_POLICY
+        )
+        if observed_policy == boundary_policy:
+            return manifest
+    assert_resource_budget(
+        workers,
+        worker_reserve_bytes=512 * 1024 * 1024,
+        launch_headroom_bytes=FULL_RUN_LAUNCH_HEADROOM_BYTES,
+    )
+    references = _reference_blocks(
+        reference_count,
+        seed,
+        boundary_policy=boundary_policy,
+    )
     directory.mkdir(parents=True, exist_ok=True)
     work = directory / ".work"
     work.mkdir(parents=True, exist_ok=True)
     fragments: list[Path] = []
     started = time.monotonic()
     peak_commit = system_committed_memory_bytes()
+    missing: list[tuple[int, Path, tuple[tuple[int, SimulationState], ...]]] = []
     for offset in range(0, reference_count, REFERENCE_CHUNK):
-        states = tuple(
-            replace_state(reference, particle, position, operator)
-            for reference in references[offset : offset + REFERENCE_CHUNK]
-            for particle in _particle_blocks(reference)
-            for position in _position_blocks()
-            for operator in _operator_blocks()
+        indexed = tuple(
+            (index, references[index])
+            for index in range(offset, min(offset + REFERENCE_CHUNK, reference_count))
         )
+        states = _states_for_references(indexed)
         fragment = work / f"part-{offset // REFERENCE_CHUNK:05d}.parquet"
         fragments.append(fragment)
         if not _fragment_matches(fragment, states):
-            rows = [result_row(simulate_state(state)) for state in states]
-            _write_table(fragment, pa.Table.from_pylist(rows))
+            missing.append((offset, fragment, indexed))
+
+    completed_references = reference_count - sum(len(item[2]) for item in missing)
+
+    def record_completion(offset: int, indexed_count: int) -> None:
+        nonlocal completed_references, peak_commit
+        completed_references += indexed_count
         committed = system_committed_memory_bytes()
         if committed is not None and (peak_commit is None or committed > peak_commit):
             peak_commit = committed
@@ -448,12 +692,66 @@ def _build_nested_release(
                 {
                     "event": "nested_chunk",
                     "release": release_name,
-                    "reference_blocks_complete": min(offset + REFERENCE_CHUNK, reference_count),
+                    "reference_block_offset": offset,
+                    "reference_blocks_complete": completed_references,
                     "reference_blocks_total": reference_count,
                 }
             ),
             flush=True,
         )
+
+    if workers == 1:
+        for offset, fragment, indexed in missing:
+            _write_nested_fragment(str(fragment), indexed)
+            record_completion(offset, len(indexed))
+    elif missing:
+        environment_names = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS")
+        previous_environment = {name: os.environ.get(name) for name in environment_names}
+        for name in environment_names:
+            os.environ[name] = "1"
+        try:
+            with ProcessPoolExecutor(max_workers=workers) as executor:
+                pending: dict[Future[tuple[str, int]], tuple[int, int]] = {}
+                cursor = 0
+
+                def submit_available() -> None:
+                    nonlocal cursor
+                    while cursor < len(missing) and len(pending) < workers:
+                        offset, fragment, indexed = missing[cursor]
+                        cursor += 1
+                        future = executor.submit(_write_nested_fragment, str(fragment), indexed)
+                        pending[future] = (offset, len(indexed))
+
+                submit_available()
+                while pending:
+                    done, _ = wait(pending, return_when=FIRST_COMPLETED)
+                    for future in done:
+                        offset, indexed_count = pending.pop(future)
+                        future.result()
+                        record_completion(offset, indexed_count)
+                    committed = system_committed_memory_bytes()
+                    if (
+                        committed is not None
+                        and committed >= COMMITTED_MEMORY_EMERGENCY_STOP_BYTES
+                    ):
+                        for future in pending:
+                            future.cancel()
+                        raise RuntimeError("emergency committed-memory stop reached")
+                    if committed is not None and committed >= COMMITTED_MEMORY_SOFT_STOP_BYTES:
+                        if cursor < len(missing):
+                            for future in pending:
+                                future.cancel()
+                            raise RuntimeError(
+                                "soft committed-memory stop reached before completion"
+                            )
+                    else:
+                        submit_available()
+        finally:
+            for name, value in previous_environment.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
     _consolidate(fragments, directory / "data.parquet")
     shutil.rmtree(work)
     elapsed = time.monotonic() - started
@@ -463,19 +761,41 @@ def _build_nested_release(
         "state_count": state_count,
         "seed": seed,
         "nested_design": {
+            **(
+                {"boundary_reference_policy": boundary_policy}
+                if boundary_policy != DEFAULT_BOUNDARY_POLICY
+                else {}
+            ),
             "reference_blocks": reference_count,
+            "reference_sobol_dimension_count": 13,
+            "normalization_power_W": 1.0,
+            "normalization_power_policy": (
+                "FIXED_UNIT_REFERENCE_TO_AVOID_EXACT_LINEAR_DUPLICATION"
+            ),
             "particle_assignments": 8,
             "particle_assignment_rule": (
-                "EIGHT_LEVELS_FROM_20_NM_TO_REFERENCE_LOCAL_LEGAL_MAXIMUM_CAPPED_AT_200_NM"
+                "EIGHT_DIAMETER_LEVELS_TO_LOCAL_LEGAL_MAX_WITH_INDEPENDENT_BALANCED_"
+                "REAL_AND_IMAGINARY_INDEX_PERMUTATIONS_ACROSS_REFERENCE_BLOCKS"
             ),
             "positions": 4,
+            "position_assignment_rule": (
+                "FOUR_BALANCED_LONGITUDINAL_LATERAL_DEPTH_PERMUTATIONS_"
+                "ROTATED_ACROSS_REFERENCE_BLOCKS"
+            ),
             "operators": 4,
+            "operator_assignment_rule": (
+                "TWO_LOW_DISCREPANCY_PUPIL_GEOMETRIES_CROSSED_WITH_FOUR_"
+                "LOW_DISCREPANCY_ANALYZERS_PER_REFERENCE_BLOCK"
+            ),
+            "balance_receipt": _design_balance_receipt(reference_count),
+            "coverage_receipt": _reference_coverage_receipt(references),
         },
-        "selected_workers": 1,
+        "selected_workers": workers,
         "chunk_size_states": REFERENCE_CHUNK * 8 * 4 * 4,
         "elapsed_seconds": elapsed,
         "peak_observed_system_committed_memory_bytes": peak_commit,
         "committed_memory_limit_bytes": COMMITTED_MEMORY_LIMIT_BYTES,
+        "parallelism_selection": PARALLELISM_SELECTION,
     }
     manifest = write_release_manifest(
         directory,
@@ -506,6 +826,7 @@ def _legal_pair(
 
 def _capability_effects(
     states: tuple[SimulationState, ...],
+    workers: int,
 ) -> tuple[list[dict[str, Any]], list[str], str, str]:
     ranges = _feature_ranges()
     groups = _feature_groups()
@@ -523,9 +844,25 @@ def _capability_effects(
             accepted += 1
         if accepted != 64:
             raise RuntimeError(f"insufficient legal formal pairs for {feature}: {accepted}")
-    pair_results = [
-        (simulate_state(low), simulate_state(high)) for _feature, low, high in pair_records
-    ]
+    assert_resource_budget(
+        workers,
+        worker_reserve_bytes=512 * 1024 * 1024,
+        launch_headroom_bytes=FULL_RUN_LAUNCH_HEADROOM_BYTES,
+    )
+    pair_states = tuple(
+        state
+        for _feature, low, high in pair_records
+        for state in (low, high)
+    )
+    batch = simulate_batch(
+        pair_states,
+        execution=ExecutionSpec(
+            workers=workers,
+            chunk_size=len(pair_states),
+            worker_reserve_bytes=512 * 1024 * 1024,
+        ),
+    )
+    pair_results = list(zip(batch.results[::2], batch.results[1::2], strict=True))
     effects: dict[str, list[float]] = defaultdict(list)
     exposure_fractions: dict[str, list[float]] = defaultdict(list)
     for (feature, _low_state, _high_state), (low, high) in zip(
@@ -545,6 +882,7 @@ def _capability_effects(
     for feature in sorted(ranges):
         values = np.asarray(effects[feature], dtype=np.float64)
         fractions = np.asarray(exposure_fractions[feature], dtype=np.float64)
+        feature_row = next(row for row in _feature_rows() if row["id"] == feature)
         median = float(np.median(values))
         q90 = float(np.quantile(values, 0.9))
         fraction_span = float(np.quantile(fractions, 0.9) - np.quantile(fractions, 0.1))
@@ -555,8 +893,9 @@ def _capability_effects(
             {
                 "feature": feature,
                 "mechanism_group": groups[feature],
-                "formal_status": next(
-                    row["formal_status"] for row in _feature_rows() if row["id"] == feature
+                "formal_status": feature_row["formal_status"],
+                "intervention_selection_eligible": feature_row.get(
+                    "intervention_selection_eligible", True
                 ),
                 "legal_pair_count": len(values),
                 "median_normalized_effect": median,
@@ -566,7 +905,11 @@ def _capability_effects(
                 "retention_rule": "Q90_NORMALIZED_COMPLEX_OUTPUT_EFFECT_GT_1E-6",
             }
         )
-    qualified = [row for row in rows if row["retained"]]
+    qualified = [
+        row
+        for row in rows
+        if row["retained"] and row["intervention_selection_eligible"]
+    ]
     if len(qualified) < 2:
         raise RuntimeError("formal capability sprint retained fewer than two features")
     primary = max(qualified, key=lambda row: row["median_normalized_effect"])
@@ -577,13 +920,17 @@ def _capability_effects(
     return rows, retained, str(primary["feature"]), str(replication["feature"])
 
 
-def _build_capability_freeze(capability: dict[str, Any], seed: int) -> dict[str, Any]:
-    directory = RELEASE_ROOT / "NODI-QUALIFICATION-PROFILE-V3"
-    release_name = "NODI-QUALIFICATION-PROFILE-V3"
+def _build_capability_freeze(
+    capability: dict[str, Any],
+    seed: int,
+    workers: int,
+) -> dict[str, Any]:
+    directory = RELEASE_ROOT / "NODI-QUALIFICATION-PROFILE-V4"
+    release_name = "NODI-QUALIFICATION-PROFILE-V4"
     if _valid_release(directory, release_name, CAPABILITY_STATE_COUNT):
         return _read_manifest(directory)
     states = tuple(_nested_states(CAPABILITY_REFERENCE_BLOCKS, seed))
-    rows, retained, primary, replication = _capability_effects(states)
+    rows, retained, primary, replication = _capability_effects(states, workers)
     directory.mkdir(parents=True, exist_ok=True)
     _write_table(directory / "qualification.parquet", pa.Table.from_pylist(rows))
     metadata = {
@@ -598,6 +945,7 @@ def _build_capability_freeze(capability: dict[str, Any], seed: int) -> dict[str,
         "replication_exposure_family": replication,
         "selection_rule": "MAX_MEDIAN_EFFECT_WITH_DIFFERENT_MECHANISM_REPLICATION",
         "feature_campaign_state": "FROZEN_SINGLE_FORMAL_SPRINT",
+        "selected_workers": workers,
     }
     return write_release_manifest(
         directory,
@@ -618,23 +966,25 @@ def _release_summary(directory: Path, manifest: dict[str, Any]) -> dict[str, Any
     }
 
 
-def run_sprint(seed: int) -> dict[str, Any]:
-    capability_dir = RELEASE_ROOT / "NODI-CAPABILITY-SPRINT-V3"
+def run_sprint(seed: int, workers: int) -> dict[str, Any]:
+    capability_dir = RELEASE_ROOT / "NODI-CAPABILITY-SPRINT-V4"
     capability = _build_nested_release(
         capability_dir,
-        release_name="NODI-CAPABILITY-SPRINT-V3",
+        release_name="NODI-CAPABILITY-SPRINT-V4",
         reference_count=CAPABILITY_REFERENCE_BLOCKS,
         seed=seed,
+        workers=workers,
     )
-    qualification = _build_capability_freeze(capability, seed)
+    qualification = _build_capability_freeze(capability, seed, workers)
     receipt = {
         "manifest_schema_version": 2,
-        "phase": "R3_FORMAL_CAPABILITY_FREEZE",
+        "phase": "R5_V4_FORMAL_CAPABILITY_FREEZE",
         "status": "PASS",
         "profile": FORMAL_PROFILE,
-        "release_root": "releases/nodi-v3",
+        "release_root": "releases/nodi-v4",
         "maximum_workers": 24,
-        "selected_workers": 1,
+        "selected_workers": workers,
+        "parallelism_selection": PARALLELISM_SELECTION,
         "committed_memory_limit_bytes": COMMITTED_MEMORY_LIMIT_BYTES,
         "qualification_report_sha256": FORMAL_QUALIFICATION_REPORT_SHA256,
         "feature_catalogue_hash": capabilities().catalogue_hash,
@@ -646,21 +996,21 @@ def run_sprint(seed: int) -> dict[str, Any]:
         "releases": {
             "capability_sprint": _release_summary(capability_dir, capability),
             "qualification_profile": _release_summary(
-                RELEASE_ROOT / "NODI-QUALIFICATION-PROFILE-V3", qualification
+                RELEASE_ROOT / "NODI-QUALIFICATION-PROFILE-V4", qualification
             ),
         },
-        "paper2_final_data_state": "BLOCKED_UNTIL_R4_RELEASES_COMPLETE",
+        "formal_reference_data_state": "BLOCKED_UNTIL_V4_RELEASES_COMPLETE",
     }
     _atomic_json(RECEIPT_PATH, receipt)
     return receipt
 
 
 def _build_quickstart(capability: dict[str, Any]) -> dict[str, Any]:
-    directory = RELEASE_ROOT / "NODI-QUICKSTART-V3"
-    release_name = "NODI-QUICKSTART-V3"
+    directory = RELEASE_ROOT / "NODI-QUICKSTART-V4"
+    release_name = "NODI-QUICKSTART-V4"
     if _valid_release(directory, release_name, QUICKSTART_STATE_COUNT):
         return _read_manifest(directory)
-    source = pq.read_table(RELEASE_ROOT / "NODI-CAPABILITY-SPRINT-V3" / "data.parquet")
+    source = pq.read_table(RELEASE_ROOT / "NODI-CAPABILITY-SPRINT-V4" / "data.parquet")
     subset = source.sort_by([("state_id", "ascending")]).slice(0, QUICKSTART_STATE_COUNT)
     directory.mkdir(parents=True, exist_ok=True)
     _write_table(directory / "data.parquet", subset)
@@ -696,16 +1046,20 @@ def _state_from_flat_row(row: dict[str, Any]) -> SimulationState:
                 "refractive_index_imag": row["particle.refractive_index_imag"],
             },
             "position": {
-                "longitudinal_m": row["position.longitudinal_m"],
+                "longitudinal_over_w0": row["position.longitudinal_over_w0"],
                 "lateral_fraction": row["position.lateral_fraction"],
                 "depth_fraction": row["position.depth_fraction"],
             },
             "source": {
                 "wavelength_m": row["source.wavelength_m"],
                 "waist_m": row["source.waist_m"],
-                "incident_power_W": row["source.incident_power_W"],
-                "beam_offset_longitudinal_m": row["source.beam_offset_longitudinal_m"],
-                "beam_offset_lateral_m": row["source.beam_offset_lateral_m"],
+                "normalization_power_W": row["source.normalization_power_W"],
+                "beam_offset_longitudinal_over_w0": row[
+                    "source.beam_offset_longitudinal_over_w0"
+                ],
+                "beam_offset_lateral_over_w0": row[
+                    "source.beam_offset_lateral_over_w0"
+                ],
                 "polarization_azimuth_rad": row["source.polarization_azimuth_rad"],
                 "ellipticity_rad": row["source.ellipticity_rad"],
                 "degree_of_polarization": row["source.degree_of_polarization"],
@@ -713,6 +1067,9 @@ def _state_from_flat_row(row: dict[str, Any]) -> SimulationState:
             "environment": {
                 "fill_refractive_index": row["environment.fill_refractive_index"],
                 "wall_refractive_index": row["environment.wall_refractive_index"],
+                "effective_wall_exclusion_m": row[
+                    "environment.effective_wall_exclusion_m"
+                ],
             },
             "observation": {
                 "collection_na": row["observation.collection_na"],
@@ -877,46 +1234,123 @@ def _pair_fragment_matches(
     ) == {FORMAL_PROFILE}
 
 
+def _write_pair_fragment(
+    path_text: str,
+    records: list[
+        tuple[str, SimulationState, SimulationState, SimulationState, float, float]
+    ],
+) -> tuple[str, int]:
+    os.environ["OMP_NUM_THREADS"] = "1"
+    os.environ["MKL_NUM_THREADS"] = "1"
+    os.environ["OPENBLAS_NUM_THREADS"] = "1"
+    results = [(simulate_state(record[2]), simulate_state(record[3])) for record in records]
+    rows = [
+        _pair_row(*record, result[0], result[1])
+        for record, result in zip(records, results, strict=True)
+    ]
+    _write_table(Path(path_text), pa.Table.from_pylist(rows))
+    return path_text, len(rows)
+
+
 def _build_interventions(
     development: dict[str, Any],
     qualification: dict[str, Any],
+    workers: int,
 ) -> dict[str, Any]:
-    directory = RELEASE_ROOT / "NODI-ATLAS-DEV-INTERVENTIONS-V3"
-    release_name = "NODI-ATLAS-DEV-INTERVENTIONS-V3"
+    directory = RELEASE_ROOT / "NODI-ATLAS-DEV-INTERVENTIONS-V4"
+    release_name = "NODI-ATLAS-DEV-INTERVENTIONS-V4"
     if _valid_release(directory, release_name, DEVELOPMENT_PAIR_COUNT):
         return _read_manifest(directory)
     features = (
         str(qualification["metadata"]["primary_exposure_family"]),
         str(qualification["metadata"]["replication_exposure_family"]),
     )
-    records = _intervention_records(RELEASE_ROOT / "NODI-ATLAS-DEV-V3", features)
+    records = _intervention_records(RELEASE_ROOT / "NODI-ATLAS-DEV-V4", features)
     directory.mkdir(parents=True, exist_ok=True)
     work = directory / ".work"
     work.mkdir(parents=True, exist_ok=True)
     fragments: list[Path] = []
+    missing: list[
+        tuple[
+            int,
+            Path,
+            list[
+                tuple[
+                    str,
+                    SimulationState,
+                    SimulationState,
+                    SimulationState,
+                    float,
+                    float,
+                ]
+            ],
+        ]
+    ] = []
     for offset in range(0, len(records), PAIR_CHUNK):
         chunk = records[offset : offset + PAIR_CHUNK]
         fragment = work / f"part-{offset // PAIR_CHUNK:05d}.parquet"
         fragments.append(fragment)
         if not _pair_fragment_matches(fragment, chunk):
-            results = [
-                (simulate_state(record[2]), simulate_state(record[3])) for record in chunk
-            ]
-            rows = [
-                _pair_row(*record, result[0], result[1])
-                for record, result in zip(chunk, results, strict=True)
-            ]
-            _write_table(fragment, pa.Table.from_pylist(rows))
+            missing.append((offset, fragment, chunk))
+
+    completed_pairs = len(records) - sum(len(item[2]) for item in missing)
+
+    def record_completion(offset: int, pair_count: int) -> None:
+        nonlocal completed_pairs
+        completed_pairs += pair_count
         print(
             canonical_json(
                 {
                     "event": "intervention_chunk",
-                    "pairs_complete": min(offset + PAIR_CHUNK, len(records)),
+                    "pair_offset": offset,
+                    "pairs_complete": completed_pairs,
                     "pairs_total": len(records),
                 }
             ),
             flush=True,
         )
+
+    assert_resource_budget(
+        workers,
+        worker_reserve_bytes=512 * 1024 * 1024,
+        launch_headroom_bytes=FULL_RUN_LAUNCH_HEADROOM_BYTES,
+    )
+    if workers == 1:
+        for offset, fragment, chunk in missing:
+            _write_pair_fragment(str(fragment), chunk)
+            record_completion(offset, len(chunk))
+    elif missing:
+        environment_names = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS")
+        previous_environment = {name: os.environ.get(name) for name in environment_names}
+        for name in environment_names:
+            os.environ[name] = "1"
+        try:
+            with ProcessPoolExecutor(max_workers=workers) as executor:
+                future_jobs = {
+                    executor.submit(_write_pair_fragment, str(fragment), chunk): (
+                        offset,
+                        len(chunk),
+                    )
+                    for offset, fragment, chunk in missing
+                }
+                for future in future_jobs:
+                    offset, pair_count = future_jobs[future]
+                    future.result()
+                    record_completion(offset, pair_count)
+                    committed = system_committed_memory_bytes()
+                    if (
+                        committed is not None
+                        and committed >= COMMITTED_MEMORY_EMERGENCY_STOP_BYTES
+                    ):
+                        for pending in future_jobs:
+                            pending.cancel()
+                        raise RuntimeError("emergency committed-memory stop reached")
+        finally:
+            for name, value in previous_environment.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
     _consolidate(fragments, directory / "pairs.parquet")
     shutil.rmtree(work)
     manifest = write_release_manifest(
@@ -935,6 +1369,7 @@ def _build_interventions(
                 "WITH_SAME_CYCLE_OFFSETS_2_AND_3_AS_LEGALITY_FALLBACK"
             ),
             "selection": "FROZEN_PRIMARY_AND_DIFFERENT_MECHANISM_REPLICATION",
+            "selected_workers": workers,
         },
     )
     report = validate_release(directory)
@@ -945,27 +1380,30 @@ def _build_interventions(
 
 def _build_evaluation_releases(
     development: dict[str, Any],
+    workers: int,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    input_directory = RELEASE_ROOT / "NODI-ATLAS-EVAL-INPUTS-V3"
-    label_directory = RELEASE_ROOT / "NODI-ATLAS-EVAL-LABELS-V3.sealed"
-    input_name = "NODI-ATLAS-EVAL-INPUTS-V3"
-    label_name = "NODI-ATLAS-EVAL-LABELS-V3.sealed"
+    input_directory = RELEASE_ROOT / "NODI-ATLAS-EVAL-INPUTS-V4"
+    label_directory = RELEASE_ROOT / "NODI-ATLAS-EVAL-LABELS-V4.sealed"
+    input_name = "NODI-ATLAS-EVAL-INPUTS-V4"
+    label_name = "NODI-ATLAS-EVAL-LABELS-V4.sealed"
     if _valid_release(
         input_directory, input_name, EVALUATION_STATE_COUNT
     ) and _valid_release(label_directory, label_name, EVALUATION_STATE_COUNT):
         return _read_manifest(input_directory), _read_manifest(label_directory)
-    transition = RELEASE_ROOT / ".evaluation-full-v3"
+    transition = RELEASE_ROOT / ".evaluation-full-v4"
     full_manifest = _build_nested_release(
         transition,
-        release_name="NODI-EVALUATION-FULL-V3-TRANSITION",
+        release_name="NODI-EVALUATION-FULL-V4-TRANSITION",
         reference_count=EVALUATION_REFERENCE_BLOCKS,
         seed=EVALUATION_SEED,
+        workers=workers,
+        boundary_policy=EVALUATION_BOUNDARY_POLICY,
     )
     full = pq.read_table(transition / "data.parquet")
     identifiers = full["state_id"].to_pylist()
     development_ids = set(
         pq.read_table(
-            RELEASE_ROOT / "NODI-ATLAS-DEV-V3" / "data.parquet",
+            RELEASE_ROOT / "NODI-ATLAS-DEV-V4" / "data.parquet",
             columns=["state_id"],
         )["state_id"].to_pylist()
     )
@@ -1036,6 +1474,7 @@ def _build_evaluation_releases(
             "release_name": label_name,
             "state_count": EVALUATION_STATE_COUNT,
             "seed": EVALUATION_SEED,
+            "boundary_reference_policy": EVALUATION_BOUNDARY_POLICY,
             "full_transition_release_id": full_manifest["release_id"],
             "access_state": "SEALED_OWNER_ONLY",
             "delivery_state": "NOT_RELEASED_TO_DOWNSTREAM",
@@ -1054,6 +1493,7 @@ def _build_evaluation_releases(
             "state_count": EVALUATION_STATE_COUNT,
             "intervention_anchor_count": EVALUATION_ANCHOR_COUNT,
             "seed": EVALUATION_SEED,
+            "boundary_reference_policy": EVALUATION_BOUNDARY_POLICY,
             "development_release_id": development["release_id"],
             "label_commitment_release_id": label_manifest["release_id"],
             "label_delivery_state": "SEALED_NOT_DELIVERED",
@@ -1071,33 +1511,33 @@ def _build_evaluation_releases(
 def _final_acceptance(features: tuple[str, str]) -> dict[str, Any]:
     capability_ids = set(
         pq.read_table(
-            RELEASE_ROOT / "NODI-CAPABILITY-SPRINT-V3" / "data.parquet",
+            RELEASE_ROOT / "NODI-CAPABILITY-SPRINT-V4" / "data.parquet",
             columns=["state_id"],
         )["state_id"].to_pylist()
     )
     quickstart_ids = set(
         pq.read_table(
-            RELEASE_ROOT / "NODI-QUICKSTART-V3" / "data.parquet",
+            RELEASE_ROOT / "NODI-QUICKSTART-V4" / "data.parquet",
             columns=["state_id"],
         )["state_id"].to_pylist()
     )
     development_ids = set(
         pq.read_table(
-            RELEASE_ROOT / "NODI-ATLAS-DEV-V3" / "data.parquet",
+            RELEASE_ROOT / "NODI-ATLAS-DEV-V4" / "data.parquet",
             columns=["state_id"],
         )["state_id"].to_pylist()
     )
     evaluation = pq.read_table(
-        RELEASE_ROOT / "NODI-ATLAS-EVAL-INPUTS-V3" / "inputs.parquet",
+        RELEASE_ROOT / "NODI-ATLAS-EVAL-INPUTS-V4" / "inputs.parquet",
         columns=["state_id", "is_intervention_anchor"],
     )
     evaluation_ids = evaluation["state_id"].to_pylist()
     label_ids = pq.read_table(
-        RELEASE_ROOT / "NODI-ATLAS-EVAL-LABELS-V3.sealed" / "labels.parquet.sealed",
+        RELEASE_ROOT / "NODI-ATLAS-EVAL-LABELS-V4.sealed" / "labels.parquet.sealed",
         columns=["state_id"],
     )["state_id"].to_pylist()
     pairs = pq.read_table(
-        RELEASE_ROOT / "NODI-ATLAS-DEV-INTERVENTIONS-V3" / "pairs.parquet",
+        RELEASE_ROOT / "NODI-ATLAS-DEV-INTERVENTIONS-V4" / "pairs.parquet",
         columns=["pair_id", "feature"],
     )
     feature_counts = {
@@ -1123,7 +1563,7 @@ def _final_acceptance(features: tuple[str, str]) -> dict[str, Any]:
         ),
         "development_intervention_feature_counts": feature_counts,
         "all_release_profiles": [FORMAL_PROFILE],
-        "v1_data_or_feature_selection_imported": False,
+        "superseded_data_or_feature_selection_imported": False,
     }
     expected_features = {
         feature: DEVELOPMENT_PAIR_COUNT // len(features) for feature in features
@@ -1139,39 +1579,41 @@ def _final_acceptance(features: tuple[str, str]) -> dict[str, Any]:
         == DEVELOPMENT_PAIR_COUNT
         and feature_counts == expected_features
     ):
-        raise RuntimeError(f"v3 cross-release acceptance failed: {acceptance}")
+        raise RuntimeError(f"v4 cross-release acceptance failed: {acceptance}")
     return acceptance
 
 
-def run_all(seed: int) -> dict[str, Any]:
-    capability_directory = RELEASE_ROOT / "NODI-CAPABILITY-SPRINT-V3"
+def run_all(seed: int, workers: int) -> dict[str, Any]:
+    capability_directory = RELEASE_ROOT / "NODI-CAPABILITY-SPRINT-V4"
     capability = _build_nested_release(
         capability_directory,
-        release_name="NODI-CAPABILITY-SPRINT-V3",
+        release_name="NODI-CAPABILITY-SPRINT-V4",
         reference_count=CAPABILITY_REFERENCE_BLOCKS,
         seed=seed,
+        workers=workers,
     )
-    qualification = _build_capability_freeze(capability, seed)
+    qualification = _build_capability_freeze(capability, seed, workers)
     quickstart = _build_quickstart(capability)
-    development_directory = RELEASE_ROOT / "NODI-ATLAS-DEV-V3"
+    development_directory = RELEASE_ROOT / "NODI-ATLAS-DEV-V4"
     development = _build_nested_release(
         development_directory,
-        release_name="NODI-ATLAS-DEV-V3",
+        release_name="NODI-ATLAS-DEV-V4",
         reference_count=DEVELOPMENT_REFERENCE_BLOCKS,
         seed=DEVELOPMENT_SEED,
+        workers=workers,
     )
-    interventions = _build_interventions(development, qualification)
-    evaluation_inputs, evaluation_labels = _build_evaluation_releases(development)
+    interventions = _build_interventions(development, qualification, workers)
+    evaluation_inputs, evaluation_labels = _build_evaluation_releases(development, workers)
     directories = {
         "capability_sprint": capability_directory,
-        "qualification_profile": RELEASE_ROOT / "NODI-QUALIFICATION-PROFILE-V3",
-        "quickstart": RELEASE_ROOT / "NODI-QUICKSTART-V3",
+        "qualification_profile": RELEASE_ROOT / "NODI-QUALIFICATION-PROFILE-V4",
+        "quickstart": RELEASE_ROOT / "NODI-QUICKSTART-V4",
         "development_atlas": development_directory,
         "development_interventions": (
-            RELEASE_ROOT / "NODI-ATLAS-DEV-INTERVENTIONS-V3"
+            RELEASE_ROOT / "NODI-ATLAS-DEV-INTERVENTIONS-V4"
         ),
-        "evaluation_inputs": RELEASE_ROOT / "NODI-ATLAS-EVAL-INPUTS-V3",
-        "evaluation_labels": RELEASE_ROOT / "NODI-ATLAS-EVAL-LABELS-V3.sealed",
+        "evaluation_inputs": RELEASE_ROOT / "NODI-ATLAS-EVAL-INPUTS-V4",
+        "evaluation_labels": RELEASE_ROOT / "NODI-ATLAS-EVAL-LABELS-V4.sealed",
     }
     manifests = {
         "capability_sprint": capability,
@@ -1187,23 +1629,27 @@ def run_all(seed: int) -> dict[str, Any]:
         for name, manifest in manifests.items()
     }
     if not all(release["valid"] for release in releases.values()):
-        raise RuntimeError("one or more v3 releases failed final validation")
+        raise RuntimeError("one or more v4 releases failed final validation")
     selected_features = (
         str(qualification["metadata"]["primary_exposure_family"]),
         str(qualification["metadata"]["replication_exposure_family"]),
     )
     acceptance = _final_acceptance(selected_features)
+    wheel_path = ROOT / "dist" / WHEEL_NAME
+    if not wheel_path.is_file():
+        raise RuntimeError(f"missing current software wheel: {wheel_path}")
     receipt = {
         "manifest_schema_version": 2,
         "product": "NODI Simulation Foundation",
-        "version": "3.0.0",
+        "version": "4.0.0",
         "release_date": "2026-08-18",
-        "phase": "R4_FORMAL_REFERENCE_RELEASES",
+        "phase": "R5_V4_CORRECTED_FORMAL_REFERENCE_RELEASES",
         "status": "PASS",
         "profile": FORMAL_PROFILE,
-        "release_root": "releases/nodi-v3",
+        "release_root": "releases/nodi-v4",
         "maximum_workers": 24,
-        "selected_workers": 1,
+        "selected_workers": workers,
+        "parallelism_selection": PARALLELISM_SELECTION,
         "committed_memory_limit_bytes": COMMITTED_MEMORY_LIMIT_BYTES,
         "qualification_report_sha256": FORMAL_QUALIFICATION_REPORT_SHA256,
         "feature_catalogue_hash": capabilities().catalogue_hash,
@@ -1214,17 +1660,19 @@ def run_all(seed: int) -> dict[str, Any]:
             "replication_exposure_family"
         ],
         "feature_campaign_state": "FROZEN_SINGLE_FORMAL_SPRINT",
-        "development_size_state": "FROZEN_SINGLE_524288_STATE_ATLAS",
+        "development_size_state": "V4_INFORMATION_BEARING_524288_STATE_ATLAS",
         "label_delivery_state": "SEALED_NOT_DELIVERED",
-        "paper2_final_data_state": "ELIGIBLE_FORMAL_M1_REFERENCE_WITH_DECLARED_LIMITS",
+        "formal_reference_data_state": (
+            "ELIGIBLE_REFERENCE_LABELS_WITH_DECLARED_LIMITS_NOT_EXPERIMENTAL_TRUTH"
+        ),
         "source_archive": {
             "mode": "GIT_ANNOTATED_TAG",
-            "tag": "v3.0.0",
+            "tag": "v4.0.0",
             "repository": "https://github.com/Shaughn0419/NODI-Simulation-Foundation",
         },
         "software_delivery": {
-            "wheel": "nodi_foundation-3.0.0-py3-none-any.whl",
-            "wheel_sha256_location": "GITHUB_RELEASE_NOTES",
+            "wheel": WHEEL_NAME,
+            "wheel_sha256": _sha256(wheel_path),
             "python_requires": ">=3.12,<3.13",
         },
         "acceptance": acceptance,
@@ -1238,8 +1686,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--phase", choices=("sprint", "all"), default="all")
     parser.add_argument("--seed", type=int, default=2026081902)
+    parser.add_argument("--workers", type=int, choices=range(1, 25), default=4)
     args = parser.parse_args()
-    receipt = run_sprint(args.seed) if args.phase == "sprint" else run_all(args.seed)
+    receipt = (
+        run_sprint(args.seed, args.workers)
+        if args.phase == "sprint"
+        else run_all(args.seed, args.workers)
+    )
     print(canonical_json({"status": receipt["status"], "phase": receipt["phase"]}))
     return 0
 

@@ -33,7 +33,7 @@ ComplexArray = NDArray[np.complex128]
 
 
 def _configuration() -> tuple[dict[str, Any], str]:
-    resource = files("nodi_foundation.data").joinpath("formal_m1_v3_dry_etch.json")
+    resource = files("nodi_foundation.data").joinpath("formal_m1_v4_dry_etch.json")
     raw = resource.read_bytes()
     document = json.loads(raw)
     return document, hashlib.sha256(raw).hexdigest()
@@ -87,6 +87,7 @@ def _freeze(array: NDArray[np.generic]) -> None:
 @lru_cache(maxsize=256)
 def _pupil_grid(
     collection_na: float,
+    fill_refractive_index: float,
     inner: float,
     outer: float,
     sector_center: float,
@@ -94,10 +95,11 @@ def _pupil_grid(
     radial_order: int,
     azimuthal_order: int,
 ) -> PupilGrid:
-    if collection_na >= 1.0:
+    reduced_na = collection_na / fill_refractive_index
+    if reduced_na >= 1.0:
         raise FoundationError(
             E_DOMAIN_INVALID,
-            "formal M1 computational exit pupil requires collection_na < 1.0",
+            "formal M1 pupil requires collection_na < fill_refractive_index",
         )
     radial_nodes, radial_weights = np.polynomial.legendre.leggauss(radial_order)
     half_span = 0.5 * (outer - inner)
@@ -108,10 +110,10 @@ def _pupil_grid(
     ) * (sector_width / azimuthal_order)
     rho, phi = np.meshgrid(rho_1d, phi_1d, indexing="ij")
     radial_weight, _ = np.meshgrid(rho_weights, phi_1d, indexing="ij")
-    sine = collection_na * rho
+    sine = reduced_na * rho
     cosine = np.sqrt(1.0 - sine * sine)
     weights = (
-        collection_na**2
+        reduced_na**2
         * rho
         / cosine
         * radial_weight
@@ -127,6 +129,8 @@ def _pupil_grid(
         {
             "profile": FORMAL_PROFILE,
             "collection_na": collection_na,
+            "fill_refractive_index": fill_refractive_index,
+            "collection_sine_in_fill": reduced_na,
             "inner": inner,
             "outer": outer,
             "sector_center": sector_center,
@@ -317,14 +321,18 @@ def _mie_solution(
 
 def _particle_coordinates(state: SimulationState) -> tuple[float, float, float]:
     radius = 0.5 * state.particle.diameter_m
+    effective_radius = radius + state.environment.effective_wall_exclusion_m
     geometry = state.geometry
     bottom = dry_etch_bottom_width(
         geometry.width_m, geometry.depth_m, geometry.sidewall_angle_deg
     )
-    z = radius + state.position.depth_fraction * (geometry.depth_m - 2.0 * radius)
+    z = effective_radius + state.position.depth_fraction * (
+        geometry.depth_m - 2.0 * effective_radius
+    )
     local_width = bottom + (geometry.width_m - bottom) * z / geometry.depth_m
-    support = 0.5 * local_width - radius
-    return state.position.longitudinal_m, state.position.lateral_fraction * support, z
+    support = 0.5 * local_width - effective_radius
+    longitudinal = state.position.longitudinal_over_w0 * state.source.waist_m
+    return longitudinal, state.position.lateral_fraction * support, z
 
 
 def _source_covariance(state: SimulationState) -> ComplexArray:
@@ -363,7 +371,7 @@ def _fields(
         state.geometry.sidewall_angle_deg,
         source.wavelength_m,
         source.waist_m,
-        source.incident_power_W,
+        source.normalization_power_W,
         source.beam_offset_longitudinal_m,
         source.beam_offset_lateral_m,
         environment.fill_refractive_index,
@@ -387,7 +395,7 @@ def _fields(
     k0 = 2.0 * math.pi / source.wavelength_m
     peak = math.sqrt(
         4.0
-        * source.incident_power_W
+        * source.normalization_power_W
         / (environment.wall_refractive_index * epsilon_0 * c * math.pi * source.waist_m**2)
     )
     envelope = math.exp(
@@ -455,9 +463,9 @@ def _block_ids(
                 for key in (
                     "wavelength_m",
                     "waist_m",
-                    "incident_power_W",
-                    "beam_offset_longitudinal_m",
-                    "beam_offset_lateral_m",
+                    "normalization_power_W",
+                    "beam_offset_longitudinal_over_w0",
+                    "beam_offset_lateral_over_w0",
                 )
             },
             "environment": payload["environment"],
@@ -508,6 +516,7 @@ def _evaluate_formal_cached(
     radial, azimuthal = pupil_order
     grid = _pupil_grid(
         state.observation.collection_na,
+        state.environment.fill_refractive_index,
         state.observation.pupil_inner_radius,
         state.observation.pupil_outer_radius,
         state.observation.detector_sector_center_rad,

@@ -19,9 +19,9 @@ from .models import (
 )
 from .profiles import (
     FAST_CONTROL_PROFILE,
+    FORMAL_CONTROL_REGRESSION_SHA256,
     FORMAL_IMPLEMENTATION_SHA256,
     FORMAL_NUMERICAL_PROFILE_SHA256,
-    FORMAL_PARITY_PANEL_SHA256,
     FORMAL_PROFILE,
     FORMAL_QUALIFICATION_MATRIX_SHA256,
     FORMAL_QUALIFICATION_REPORT_SHA256,
@@ -177,13 +177,15 @@ def validate_release(path: str | Path) -> ValidationReport:
                     "physics_implementation_sha256": FORMAL_IMPLEMENTATION_SHA256,
                     "numerical_profile_sha256": FORMAL_NUMERICAL_PROFILE_SHA256,
                     "qualification_matrix_sha256": FORMAL_QUALIFICATION_MATRIX_SHA256,
-                    "parity_panel_sha256": FORMAL_PARITY_PANEL_SHA256,
-                    "paper2_final_truth_eligible": True,
+                    "scaling_control_regression_sha256": (
+                        FORMAL_CONTROL_REGRESSION_SHA256
+                    ),
+                    "formal_reference_label_eligible": True,
                 }
                 if any(metadata.get(key) != value for key, value in expected.items()):
                     errors.append("E_RELEASE_FORMAL_QUALIFICATION_BINDING_MISMATCH")
-            elif metadata.get("paper2_final_truth_eligible") is not False:
-                errors.append("E_RELEASE_FAST_CONTROL_PAPER2_ELIGIBILITY_INVALID")
+            elif metadata.get("formal_reference_label_eligible") is not False:
+                errors.append("E_RELEASE_FAST_CONTROL_REFERENCE_ELIGIBILITY_INVALID")
             requires_profile_column = release_type != "NODI_QUALIFICATION_PROFILE_RELEASE"
             if (
                 requires_profile_column
@@ -192,8 +194,8 @@ def validate_release(path: str | Path) -> ValidationReport:
                 and isinstance(files[0].get("path"), str)
             ):
                 try:
-                    import pyarrow as pa  # type: ignore[import-untyped]
-                    import pyarrow.parquet as pq  # type: ignore[import-untyped]
+                    import pyarrow as pa
+                    import pyarrow.parquet as pq
 
                     table = pq.read_table(
                         directory / files[0]["path"], columns=["physics_profile_id"]

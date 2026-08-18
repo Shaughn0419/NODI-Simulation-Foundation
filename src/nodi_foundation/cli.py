@@ -136,7 +136,7 @@ def main(argv: list[str] | None = None) -> int:
             feature=str(raw["feature"]),
             low_value=float(raw["low_value"]),
             high_value=float(raw["high_value"]),
-            release_name=str(raw.get("release_name", "NODI-PAIRS-CUSTOM-V3")),
+            release_name=str(raw.get("release_name", "NODI-PAIRS-CUSTOM-V4")),
             execution=_execution(args),
             feature_catalogue_hash=(
                 None

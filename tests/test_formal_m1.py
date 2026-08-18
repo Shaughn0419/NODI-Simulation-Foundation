@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from nodi_foundation import ObservationOperatorState, SimulationState, simulate_state
-from nodi_foundation._physics.formal_m1 import evaluate_formal_m1
-from nodi_foundation.errors import FoundationError
+from nodi_foundation._physics.formal_m1 import _pupil_grid, evaluate_formal_m1
 from nodi_foundation.models import canonical_sha256
 from nodi_foundation.profiles import (
     FAST_CONTROL_PROFILE,
@@ -22,8 +22,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_declared_pupil_refinement_converges() -> None:
     state = SimulationState()
-    production = evaluate_formal_m1(state, pupil_order=(32, 64), reference_order=96)
-    strict = evaluate_formal_m1(state, pupil_order=(40, 80), reference_order=128)
+    production = evaluate_formal_m1(state, pupil_order=(80, 160), reference_order=96)
+    strict = evaluate_formal_m1(state, pupil_order=(96, 192), reference_order=128)
     for name in ("B_bg_W", "S_W", "C_r_W", "C_i_W"):
         expected = getattr(strict, name)
         assert getattr(production, name) == pytest.approx(
@@ -31,9 +31,9 @@ def test_declared_pupil_refinement_converges() -> None:
         )
 
 
-def test_absolute_incident_power_scales_all_quadratic_primitives() -> None:
+def test_normalization_power_scales_all_quadratic_primitives() -> None:
     base = SimulationState()
-    doubled = replace(base, source=replace(base.source, incident_power_W=2.0))
+    doubled = replace(base, source=replace(base.source, normalization_power_W=2.0))
     first = simulate_state(base)
     second = simulate_state(doubled)
     for name in ("B_bg_W", "S_W", "C_r_W", "C_i_W"):
@@ -47,10 +47,12 @@ def test_common_field_coupling_obeys_cauchy_bound() -> None:
     assert result.C_r_W**2 + result.C_i_W**2 <= result.B_bg_W * result.S_W
 
 
-def test_formal_failure_does_not_fallback_to_fast_control() -> None:
-    observation = ObservationOperatorState(collection_na=1.05)
-    with pytest.raises(FoundationError, match="formal M1 computational exit pupil"):
-        simulate_state(SimulationState(observation=observation))
+def test_physical_na_above_one_is_supported_in_fill_medium() -> None:
+    observation = ObservationOperatorState(collection_na=1.20)
+    formal = simulate_state(SimulationState(observation=observation))
+    assert formal.numerical_status == "FORMAL_FIELD_FINITE"
+    grid = _pupil_grid(1.20, 1.33, 0.0, 1.0, 0.0, 2.0 * math.pi, 8, 16)
+    assert float(grid.theta.max()) < math.asin(1.20 / 1.33)
     control = simulate_state(
         SimulationState(
             observation=observation,
@@ -61,7 +63,7 @@ def test_formal_failure_does_not_fallback_to_fast_control() -> None:
 
 
 def test_qualification_report_and_implementation_are_exactly_bound() -> None:
-    report_path = ROOT / "formal_m1_v3_dry_etch_qualification_report.json"
+    report_path = ROOT / "formal_m1_v4_dry_etch_qualification_report.json"
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert hashlib.sha256(report_path.read_bytes()).hexdigest() == (
         FORMAL_QUALIFICATION_REPORT_SHA256
