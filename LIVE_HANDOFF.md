@@ -1,15 +1,15 @@
 # NODI Simulation Foundation live handoff
 
-- Released product version: `v1.0.0` (immutable)
-- Target product version: `v2.0.0`
-- Current state: `R4_PASS_V2_RELEASE_ACTIVE`
-- Current batch: `V2_PRODUCT_RELEASE`
+- Released product version: `v2.0.0`
+- Immutable predecessor: `v1.0.0`
+- Current state: `V2.0.0_RELEASED`
+- Current batch: `ROADMAP_COMPLETE`
 - Physics specification source: Paper 1 analytical M1 at
   `bb27a3ac882344e4ef26663102cd6c0a6882b675`
 - Foundation physics base: `ea01b875d031c18541bf740c3db0a21868d2e318`
 - Migration mode: `REIMPLEMENT_FROM_SPECIFICATION_NO_RUNTIME_IMPORT`
-- Released engine/schema/feature identity: `1.0.0 / 1.0 / 1.0`
-- Target engine/schema/feature identity: `2.0.0 / 2.0 / 2.0`
+- Historical v1 engine/schema/feature identity: `1.0.0 / 1.0 / 1.0`
+- Released engine/schema/feature identity: `2.0.0 / 2.0 / 2.0`
 - Maximum aggregate workers: `24`
 - Historical v1 control production workers: `1`
 - Formal v2 production workers: `1`
@@ -19,7 +19,7 @@
 - External-consumer smoke: `PASS`
 - Reference-release validation: `PASS`
 - Sealed-label delivery state: `SEALED_NOT_DELIVERED`
-- Source archive: annotated Git tag `v1.0.0`
+- Source archive: annotated Git tag `v2.0.0`
 - v1 current profile ID: `FAST_SCALING_CONTROL_V1`
 - v1 scientific role: `SOFTWARE_AND_PIPELINE_CONTROL`
 - v1 Paper 2 final eligibility: `false`
@@ -68,8 +68,8 @@ power normalization, complex homogeneous Mie amplitudes, analytic local field,
 vector pupil/operator, common-field `B/S/C` coupling, stable factor block IDs,
 and numerical receipt IDs. The default canonical state is within 0.1% of the
 frozen reference `B`, reproduces `S` at numerical precision, and is within 5%
-for both complex `C` components. These are implementation observations pending
-the single R2 qualification report, not a release promotion.
+for both complex `C` components. These were prequalification implementation
+observations and are not broader physical claims.
 
 R2 disposition is `PASS_WITH_LIMITS`: 384/384 predeclared panel cases passed,
 maximum middle-to-final complex-field refinement was 2.93%, and all direct

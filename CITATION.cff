@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use this software or its datasets, cite this software and the exact release ID."
 title: "NODI Simulation Foundation"
 type: software
-version: 1.0.0
+version: 2.0.0
 date-released: 2026-08-18
 authors:
   - family-names: "Shaughn0419"

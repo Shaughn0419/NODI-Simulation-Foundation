@@ -1117,6 +1117,9 @@ def run_all(seed: int) -> dict[str, Any]:
     acceptance = _final_acceptance(selected_features)
     receipt = {
         "manifest_schema_version": 2,
+        "product": "NODI Simulation Foundation",
+        "version": "2.0.0",
+        "release_date": "2026-08-18",
         "phase": "R4_FORMAL_REFERENCE_RELEASES",
         "status": "PASS",
         "profile": FORMAL_PROFILE,
@@ -1136,6 +1139,16 @@ def run_all(seed: int) -> dict[str, Any]:
         "development_size_state": "FROZEN_SINGLE_524288_STATE_ATLAS",
         "label_delivery_state": "SEALED_NOT_DELIVERED",
         "paper2_final_data_state": "ELIGIBLE_FORMAL_M1_REFERENCE_WITH_DECLARED_LIMITS",
+        "source_archive": {
+            "mode": "GIT_ANNOTATED_TAG",
+            "tag": "v2.0.0",
+            "repository": "https://github.com/Shaughn0419/NODI-Simulation-Foundation",
+        },
+        "software_delivery": {
+            "wheel": "nodi_foundation-2.0.0-py3-none-any.whl",
+            "wheel_sha256_location": "GITHUB_RELEASE_NOTES",
+            "python_requires": ">=3.12,<3.13",
+        },
         "acceptance": acceptance,
         "releases": releases,
     }

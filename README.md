@@ -1,13 +1,12 @@
 # NODI Simulation Foundation
 
 Standalone simulation and immutable reference-data tooling for NODI research.
-The released 1.0.0 software and data remain byte-for-byte immutable, but their
-physics profile is now formally classified as `FAST_SCALING_CONTROL_V1`: a
-software, pipeline, and scaling control that is not eligible as Paper 2 final
-truth. The product-correction mainline is implementing
-`FORMAL_FIELD_COUPLING_M1_V2` for the 2.0.0 release. Neither line has a runtime
-dependency on Paper 1, Paper 2, the legacy simulator, COMSOL, or an external
-checkout.
+Version 2.0.0 provides the released `FORMAL_FIELD_COUPLING_M1_V2` engine and
+content-addressed reference products. The immutable 1.0.0 predecessor remains
+byte-for-byte available but is formally classified as `FAST_SCALING_CONTROL_V1`:
+a software, pipeline, and scaling control that is not eligible as Paper 2 final
+truth. Neither line has a runtime dependency on Paper 1, Paper 2, the legacy
+simulator, COMSOL, or an external checkout.
 
 The machine-readable correction and exact immutable v1 bindings are in
 [v1_control_reclassification.json](v1_control_reclassification.json). The v1
