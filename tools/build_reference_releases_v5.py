@@ -420,8 +420,13 @@ def _radical_inverse(index: int, base: int) -> float:
 def _operator_blocks(reference_index: int) -> tuple[ObservationOperatorState, ...]:
     if reference_index < 16:
         analyzer_azimuth = math.pi * (reference_index + 1) / 17.0
+        analyzer_ellipticity = math.pi * (reference_index - 7.5) / 40.0
+        sector_center = 2.0 * math.pi * (reference_index + 0.5) / 16.0
         return (
-            ObservationOperatorState(collection_na=0.40),
+            ObservationOperatorState(
+                collection_na=0.40,
+                analyzer_azimuth_rad=analyzer_azimuth,
+            ),
             ObservationOperatorState(
                 collection_na=1.20,
                 analyzer_azimuth_rad=analyzer_azimuth,
@@ -429,6 +434,9 @@ def _operator_blocks(reference_index: int) -> tuple[ObservationOperatorState, ..
             ObservationOperatorState(
                 pupil_inner_radius=0.75,
                 pupil_outer_radius=0.85,
+                analyzer_azimuth_rad=analyzer_azimuth,
+                analyzer_ellipticity_rad=analyzer_ellipticity,
+                detector_sector_center_rad=sector_center,
                 detector_sector_width_rad=math.pi / 6.0,
             ),
             ObservationOperatorState(
@@ -703,6 +711,8 @@ def _build_nested_release(
         seed,
         boundary_policy=boundary_policy,
     )
+    balance_receipt = _design_balance_receipt(reference_count)
+    coverage_receipt = _reference_coverage_receipt(references)
     directory.mkdir(parents=True, exist_ok=True)
     work = directory / ".work"
     work.mkdir(parents=True, exist_ok=True)
@@ -846,8 +856,8 @@ def _build_nested_release(
                 "TWO_LOW_DISCREPANCY_PUPIL_GEOMETRIES_CROSSED_WITH_FOUR_"
                 "LOW_DISCREPANCY_ANALYZERS_PER_REFERENCE_BLOCK"
             ),
-            "balance_receipt": _design_balance_receipt(reference_count),
-            "coverage_receipt": _reference_coverage_receipt(references),
+            "balance_receipt": balance_receipt,
+            "coverage_receipt": coverage_receipt,
         },
         "selected_workers": workers,
         "chunk_size_states": REFERENCE_CHUNK * 8 * 4 * 4,

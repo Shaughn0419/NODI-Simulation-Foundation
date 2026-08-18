@@ -4,7 +4,7 @@ state_count: 64
 sampling_method: sobol
 seed: 20260818
 feature_catalogue_hash: 7ee0e153c9adc07be18062e5eacb93c72e4fad291e3fe4e8deb24799681aa512
-qualification_report_hash: 3cbad01222fefcc2e06220b0206852230bdffc530220a0b625b4128dcfdcfa4f
+qualification_report_hash: ed60dacae8d95a2804a6f8cd0d75e7acab98bab88b18f7896147fbfdc6723fd4
 feature_ranges:
   channel_width: [8.0e-7, 1.6e-6]
   channel_depth: [3.0e-7, 8.0e-7]

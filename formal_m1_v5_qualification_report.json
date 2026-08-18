@@ -82,7 +82,7 @@
     "status": "PASS"
   },
   "formal_reference_label_generation_eligible": true,
-  "foundation_parent_commit": "ba667923dbafeed2f849614d7ecb12e476631f18",
+  "foundation_parent_commit": "ec73233b31bb52a1c3d49f1a9300c799f6637202",
   "geometry_contract": {
     "bottom_width_equation": "width_m-2*depth_m/tan(sidewall_angle_deg)",
     "negative_bottom_width": "REJECTED_EXCEPT_FLOATING_POINT_ROUNDOFF_NORMALIZED_TO_ZERO",
@@ -104,7 +104,7 @@
     "repository": "Shaughn0419/NODI_ReferenceCoupling_Paper",
     "runtime_import_in_product": false
   },
-  "payload_sha256": "0202acea2c429498b01e514a7dc73bc725d09501b14655a06e4adedc1beadb8c",
+  "payload_sha256": "286fb1a677e9f42f6da570fcf1abd54960c1367ae2614003247534d30711b79a",
   "per_feature_status": [
     {
       "api_domain": [
@@ -460,7 +460,7 @@
   ],
   "performance_pilot": {
     "cache_persistence": "IN_PROCESS_CONTENT_ADDRESSED_LRU_PLUS_OPTIONAL_PUBLIC_BATCH_CACHE",
-    "cold_amortized_state_seconds": 0.0059279785156149956,
+    "cold_amortized_state_seconds": 0.0052033691405881655,
     "cold_cache_stats": {
       "mie": {
         "current_size": 128,
@@ -487,47 +487,47 @@
         "misses": 128
       }
     },
-    "cold_profiled_seconds": 24.280999999959022,
+    "cold_profiled_seconds": 21.312999999849126,
     "committed_memory_limit_bytes": 210000000000,
     "design": "64_REFERENCE_X_4_PARTICLE_X_4_POSITION_X_4_OBSERVATION_OPERATOR",
     "inclusive_layer_profile": {
       "_evaluate_formal_cached": {
-        "inclusive_seconds": 20.6119419,
-        "own_seconds": 0.6737501,
+        "inclusive_seconds": 18.5167073,
+        "own_seconds": 0.5688436,
         "primitive_calls": 4096,
         "total_calls": 4096
       },
       "_fields": {
-        "inclusive_seconds": 7.332580900000001,
-        "own_seconds": 3.3626882,
+        "inclusive_seconds": 6.6968866,
+        "own_seconds": 2.999724,
         "primitive_calls": 2048,
         "total_calls": 2048
       },
       "_mie_solution": {
-        "inclusive_seconds": 0.8670009000000001,
-        "own_seconds": 0.0619801,
+        "inclusive_seconds": 0.7868484,
+        "own_seconds": 0.049212000000000006,
         "primitive_calls": 128,
         "total_calls": 128
       },
       "_reference_scalar": {
-        "inclusive_seconds": 3.1529791,
-        "own_seconds": 3.0710287000000003,
+        "inclusive_seconds": 2.9261083,
+        "own_seconds": 2.8277078,
         "primitive_calls": 128,
         "total_calls": 128
       }
     },
     "linear_runtime_estimate_seconds": {
-      "131072": 776.9919999986887,
-      "32768": 194.24799999967217,
-      "524288": 3107.967999994755
+      "131072": 682.015999995172,
+      "32768": 170.503999998793,
+      "524288": 2728.063999980688
     },
     "pilot_id": "FORMAL_M1_V5_EXACT_SUPPORT_NESTED_PERFORMANCE_PILOT",
     "selected_chunk_size": 1024,
     "selected_workers": 1,
     "state_count": 4096,
     "status": "PASS",
-    "system_committed_memory_before_bytes": 115484205056,
-    "system_committed_memory_peak_bytes": 115196981248,
+    "system_committed_memory_before_bytes": 113036861440,
+    "system_committed_memory_peak_bytes": 112634880000,
     "timing_note": "CPROFILE_COLD_TIMING_IS_CONSERVATIVE_AND_INCLUDES_PUBLIC_RESULT_HASHING",
     "unique_block_counts": {
       "operator_block_id": 16,
@@ -535,7 +535,7 @@
       "position_block_id": 1024,
       "reference_block_id": 128
     },
-    "warm_amortized_state_seconds": 7.250976563000222e-05,
+    "warm_amortized_state_seconds": 6.494140626500666e-05,
     "warm_cache_stats": {
       "mie": {
         "current_size": 128,
@@ -562,7 +562,7 @@
         "misses": 128
       }
     },
-    "warm_operator_summary_seconds": 0.2970000000204891
+    "warm_operator_summary_seconds": 0.2660000000614673
   },
   "physics_implementation_sha256": "249a66cac115fdc236289bc02965752cfa226efe6b4302192ef2971b214357b3",
   "physics_profile_id": "FORMAL_FIELD_COUPLING_M1_V5_EXACT_SUPPORT",
