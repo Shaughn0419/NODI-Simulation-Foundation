@@ -14,14 +14,15 @@ from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
-import pyarrow as pa  # type: ignore[import-untyped]
-import pyarrow.parquet as pq  # type: ignore[import-untyped]
+import pyarrow as pa
+import pyarrow.parquet as pq
 from scipy.stats import qmc  # type: ignore[import-untyped]
 
 from .batch import ExecutionSpec, simulate_batch
 from .capabilities import capabilities
 from .errors import E_DOMAIN_INVALID, FoundationError
 from .models import ENGINE_VERSION, FEATURE_VERSION, SimulationState, StateResult
+from .profiles import FORMAL_PROFILE, SUPPORTED_PROFILES
 from .releases import DatasetRelease, write_release_manifest
 
 
@@ -33,8 +34,10 @@ class DatasetSpec:
     fixed_values: dict[str, float] = field(default_factory=dict)
     sampling_method: str = "sobol"
     seed: int = 0
-    profile: str = "M1_ANALYTICAL_SYNTHETIC_V1"
-    release_name: str = "NODI-CUSTOM-V1"
+    profile: str = FORMAL_PROFILE
+    feature_catalogue_hash: str | None = None
+    qualification_report_hash: str | None = None
+    release_name: str = "NODI-CUSTOM-V2"
     execution: ExecutionSpec = ExecutionSpec()
 
     def __post_init__(self) -> None:
@@ -46,6 +49,8 @@ class DatasetSpec:
             raise FoundationError(E_DOMAIN_INVALID, "sampling_method must be sobol or random")
         if set(self.feature_ranges) & set(self.fixed_values):
             raise FoundationError(E_DOMAIN_INVALID, "a feature cannot be fixed and ranged")
+        if self.profile not in SUPPORTED_PROFILES:
+            raise FoundationError(E_DOMAIN_INVALID, f"unsupported physics profile {self.profile!r}")
 
 
 def _feature_paths() -> dict[str, str]:
@@ -80,7 +85,7 @@ def sample_states(spec: DatasetSpec) -> tuple[SimulationState, ...]:
             raise FoundationError(E_DOMAIN_INVALID, f"invalid range for {name}")
         if bounds[0] > bounds[1]:
             raise FoundationError(E_DOMAIN_INVALID, f"reversed range for {name}")
-    base = SimulationState().to_payload()
+    base = SimulationState(physics_profile_id=spec.profile).to_payload()
     for name, value in spec.fixed_values.items():
         _set_path(base, paths[name], value)
     names = tuple(sorted(spec.feature_ranges))
@@ -136,6 +141,14 @@ def result_row(result: StateResult) -> dict[str, Any]:
     row.update(
         {
             "state_id": result.state_id,
+            "physics_profile_id": result.physics_profile_id,
+            "fidelity_class": result.fidelity_class,
+            "claim_ceiling": result.claim_ceiling,
+            "reference_block_id": result.reference_block_id,
+            "particle_block_id": result.particle_block_id,
+            "position_block_id": result.position_block_id,
+            "operator_block_id": result.operator_block_id,
+            "numerical_receipt_ids": list(result.numerical_receipt_ids),
             "B_bg_W": result.B_bg_W,
             "S_W": result.S_W,
             "C_r_W": result.C_r_W,
@@ -219,7 +232,9 @@ def _write_parquet_atomic(path: Path, rows: list[dict[str, Any]]) -> None:
     os.close(handle)
     try:
         table = pa.Table.from_pylist(rows)
-        pq.write_table(table, temporary, compression="zstd", use_dictionary=True)
+        pq.write_table(  # type: ignore[no-untyped-call]
+            table, temporary, compression="zstd", use_dictionary=True
+        )
         os.replace(temporary, path)
     finally:
         if os.path.exists(temporary):
@@ -230,7 +245,7 @@ def _fragment_matches(path: Path, states: tuple[SimulationState, ...]) -> bool:
     if not path.is_file():
         return False
     try:
-        table = pq.read_table(
+        table = pq.read_table(  # type: ignore[no-untyped-call]
             path,
             columns=["state_id", "engine_version", "feature_version"],
         )
@@ -252,23 +267,23 @@ def _consolidate_fragments(paths: list[Path], target: Path) -> None:
     writer: pq.ParquetWriter | None = None
     try:
         for path in paths:
-            table = pq.read_table(path)
+            table = pq.read_table(path)  # type: ignore[no-untyped-call]
             if writer is None:
-                writer = pq.ParquetWriter(
+                writer = pq.ParquetWriter(  # type: ignore[no-untyped-call]
                     temporary,
                     table.schema,
                     compression="zstd",
                     use_dictionary=True,
                 )
-            writer.write_table(table)
+            writer.write_table(table)  # type: ignore[no-untyped-call]
         if writer is None:
             raise RuntimeError("cannot consolidate an empty dataset")
-        writer.close()
+        writer.close()  # type: ignore[no-untyped-call]
         writer = None
         os.replace(temporary, target)
     finally:
         if writer is not None:
-            writer.close()
+            writer.close()  # type: ignore[no-untyped-call]
         if os.path.exists(temporary):
             os.unlink(temporary)
 
@@ -276,6 +291,19 @@ def _consolidate_fragments(paths: list[Path], target: Path) -> None:
 def build_dataset(dataset_spec: DatasetSpec) -> DatasetRelease:
     """Build one deterministic custom dataset and content-addressed release."""
 
+    report = capabilities()
+    if dataset_spec.profile == FORMAL_PROFILE:
+        if dataset_spec.feature_catalogue_hash != report.catalogue_hash:
+            raise FoundationError(
+                E_DOMAIN_INVALID, "formal dataset must bind the current feature catalogue hash"
+            )
+        qualification = dataset_spec.qualification_report_hash
+        if qualification is None or len(qualification) != 64 or any(
+            char not in "0123456789abcdef" for char in qualification
+        ):
+            raise FoundationError(
+                E_DOMAIN_INVALID, "formal dataset must bind a qualification report SHA-256"
+            )
     states = sample_states(dataset_spec)
     dataset_spec.output_dir.mkdir(parents=True, exist_ok=True)
     work_dir = dataset_spec.output_dir / ".work"
@@ -301,6 +329,8 @@ def build_dataset(dataset_spec: DatasetSpec) -> DatasetRelease:
     metadata = {
         "release_name": dataset_spec.release_name,
         "profile": dataset_spec.profile,
+        "feature_catalogue_hash": dataset_spec.feature_catalogue_hash,
+        "qualification_report_hash": dataset_spec.qualification_report_hash,
         "state_count": dataset_spec.state_count,
         "sampling_method": dataset_spec.sampling_method,
         "seed": dataset_spec.seed,
@@ -350,8 +380,18 @@ def dataset_spec_from_mapping(value: dict[str, Any], *, output_dir: Path) -> Dat
         },
         sampling_method=str(value.get("sampling_method", "sobol")),
         seed=int(value.get("seed", 0)),
-        profile=str(value.get("profile", "M1_ANALYTICAL_SYNTHETIC_V1")),
-        release_name=str(value.get("release_name", "NODI-CUSTOM-V1")),
+        profile=str(value.get("profile", FORMAL_PROFILE)),
+        feature_catalogue_hash=(
+            None
+            if value.get("feature_catalogue_hash") is None
+            else str(value["feature_catalogue_hash"])
+        ),
+        qualification_report_hash=(
+            None
+            if value.get("qualification_report_hash") is None
+            else str(value["qualification_report_hash"])
+        ),
+        release_name=str(value.get("release_name", "NODI-CUSTOM-V2")),
         execution=execution,
     )
 

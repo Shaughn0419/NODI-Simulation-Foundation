@@ -6,7 +6,7 @@ import math
 from collections.abc import Mapping
 from typing import Any
 
-from ._physics import evaluate_m1
+from ._physics import evaluate_profile
 from .models import (
     ENGINE_VERSION,
     FEATURE_VERSION,
@@ -15,21 +15,37 @@ from .models import (
     StateResult,
     canonical_sha256,
 )
+from .profiles import (
+    FAST_CLAIM_CEILING,
+    FAST_CONTROL_PROFILE,
+    FAST_FIDELITY,
+    FORMAL_CLAIM_CEILING,
+    FORMAL_FIDELITY,
+)
 
 
 def simulate_state(state_spec: SimulationState | Mapping[str, Any]) -> StateResult:
-    """Validate and simulate one state with the Foundation analytical M1 engine."""
+    """Validate and simulate one state with its explicit physics profile."""
 
     state = (
         state_spec
         if isinstance(state_spec, SimulationState)
         else SimulationState.from_mapping(state_spec)
     )
-    primitive = evaluate_m1(state)
+    primitive = evaluate_profile(state)
+    is_control = state.physics_profile_id == FAST_CONTROL_PROFILE
     y_0 = primitive.S_W + 2.0 * primitive.C_r_W
     payload: dict[str, Any] = {
         "state_id": state.state_id,
         "inputs": state.to_payload(),
+        "physics_profile_id": state.physics_profile_id,
+        "fidelity_class": FAST_FIDELITY if is_control else FORMAL_FIDELITY,
+        "claim_ceiling": FAST_CLAIM_CEILING if is_control else FORMAL_CLAIM_CEILING,
+        "reference_block_id": primitive.reference_block_id,
+        "particle_block_id": primitive.particle_block_id,
+        "position_block_id": primitive.position_block_id,
+        "operator_block_id": primitive.operator_block_id,
+        "numerical_receipt_ids": primitive.numerical_receipt_ids,
         "B_bg_W": primitive.B_bg_W,
         "S_W": primitive.S_W,
         "C_r_W": primitive.C_r_W,
@@ -40,12 +56,20 @@ def simulate_state(state_spec: SimulationState | Mapping[str, Any]) -> StateResu
         "eta_imag": primitive.eta_imag,
         "eta_abs": primitive.eta_abs,
         "C_phase_rad": primitive.C_phase_rad,
-        "numerical_status": "ANALYTICAL_FINITE",
+        "numerical_status": "SCALING_CONTROL_FINITE" if is_control else "FORMAL_FIELD_FINITE",
         "uncertainty": {
-            "numerical": "CLOSED_FORM_DOUBLE_PRECISION",
-            "model_discrepancy": "UNAVAILABLE_ANALYTICAL_M1_ONLY",
+            "numerical": (
+                "CLOSED_FORM_DOUBLE_PRECISION_CONTROL"
+                if is_control
+                else "DECLARED_QUADRATURE_AND_MIE_CONVERGENCE"
+            ),
+            "model_discrepancy": (
+                "NOT_SCIENTIFICALLY_QUALIFIED_CONTROL_ONLY"
+                if is_control
+                else "FIRST_ORDER_M1_OMISSIONS_DECLARED"
+            ),
         },
-        "applicability_profile_id": "M1_ANALYTICAL_SYNTHETIC_V1",
+        "applicability_profile_id": state.physics_profile_id,
         "operator_qualification_status": primitive.operator_qualification_status,
         "engine_version": ENGINE_VERSION,
         "schema_version": SCHEMA_VERSION,

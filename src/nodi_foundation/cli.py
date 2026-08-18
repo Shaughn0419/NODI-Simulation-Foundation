@@ -136,7 +136,7 @@ def main(argv: list[str] | None = None) -> int:
             feature=str(raw["feature"]),
             low_value=float(raw["low_value"]),
             high_value=float(raw["high_value"]),
-            release_name=str(raw.get("release_name", "NODI-PAIRS-CUSTOM-V1")),
+            release_name=str(raw.get("release_name", "NODI-PAIRS-CUSTOM-V2")),
             execution=_execution(args),
         )
         print(build_intervention_pairs(spec).release_id)

@@ -7,8 +7,8 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-import pyarrow as pa  # type: ignore[import-untyped]
-import pyarrow.parquet as pq  # type: ignore[import-untyped]
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from .batch import ExecutionSpec, simulate_batch
 from .datasets import state_with_value
@@ -23,7 +23,7 @@ class PairSpec:
     feature: str
     low_value: float
     high_value: float
-    release_name: str = "NODI-PAIRS-CUSTOM-V1"
+    release_name: str = "NODI-PAIRS-CUSTOM-V2"
     execution: ExecutionSpec = ExecutionSpec()
 
 
@@ -78,7 +78,9 @@ def build_intervention_pairs(pair_spec: PairSpec) -> PairRelease:
     )
     os.close(handle)
     try:
-        pq.write_table(pa.Table.from_pylist(rows), temporary, compression="zstd")
+        pq.write_table(  # type: ignore[no-untyped-call]
+            pa.Table.from_pylist(rows), temporary, compression="zstd"
+        )
         os.replace(temporary, target)
     finally:
         if os.path.exists(temporary):

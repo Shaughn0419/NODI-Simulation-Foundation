@@ -1,4 +1,4 @@
-"""The complete stable v1 public API facade."""
+"""The complete stable public API facade."""
 
 from .batch import BatchResult, ExecutionSpec, simulate_batch
 from .capabilities import CapabilityReport, capabilities

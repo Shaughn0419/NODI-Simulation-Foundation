@@ -16,9 +16,9 @@ from .errors import (
     FoundationError,
 )
 
-SCHEMA_VERSION = "1.0"
-ENGINE_VERSION = "1.0.0"
-FEATURE_VERSION = "1.0"
+SCHEMA_VERSION = "2.0"
+ENGINE_VERSION = "2.0.0"
+FEATURE_VERSION = "2.0"
 
 
 def canonical_json(value: object) -> str:
@@ -168,8 +168,15 @@ class SimulationState:
     source: SourceState = SourceState()
     environment: EnvironmentState = EnvironmentState()
     observation: ObservationOperatorState = ObservationOperatorState()
+    physics_profile_id: str = "FORMAL_FIELD_COUPLING_M1_V2"
 
     def __post_init__(self) -> None:
+        from .profiles import SUPPORTED_PROFILES
+
+        if self.physics_profile_id not in SUPPORTED_PROFILES:
+            raise FoundationError(
+                E_DOMAIN_INVALID, f"unsupported physics profile {self.physics_profile_id!r}"
+            )
         if abs(self.position.longitudinal_m) > 2.0 * self.source.waist_m:
             raise FoundationError(
                 E_DOMAIN_INVALID, "particle longitudinal position exceeds 2 waist"
@@ -195,7 +202,15 @@ class SimulationState:
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> SimulationState:
-        expected = {"geometry", "particle", "position", "source", "environment", "observation"}
+        expected = {
+            "geometry",
+            "particle",
+            "position",
+            "source",
+            "environment",
+            "observation",
+            "physics_profile_id",
+        }
         unknown = set(value) - expected
         if unknown:
             raise FoundationError(
@@ -209,6 +224,9 @@ class SimulationState:
                 source=SourceState(**dict(value.get("source", {}))),
                 environment=EnvironmentState(**dict(value.get("environment", {}))),
                 observation=ObservationOperatorState(**dict(value.get("observation", {}))),
+                physics_profile_id=str(
+                    value.get("physics_profile_id", "FORMAL_FIELD_COUPLING_M1_V2")
+                ),
             )
         except TypeError as exc:
             raise FoundationError(E_DOMAIN_INVALID, "invalid SimulationState structure") from exc
@@ -218,6 +236,14 @@ class SimulationState:
 class StateResult:
     state_id: str
     inputs: dict[str, Any]
+    physics_profile_id: str
+    fidelity_class: str
+    claim_ceiling: str
+    reference_block_id: str
+    particle_block_id: str
+    position_block_id: str
+    operator_block_id: str
+    numerical_receipt_ids: tuple[str, ...]
     B_bg_W: float
     S_W: float
     C_r_W: float

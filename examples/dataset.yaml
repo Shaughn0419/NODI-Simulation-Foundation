@@ -1,4 +1,5 @@
-release_name: NODI-QUICK-CUSTOM-V1
+release_name: NODI-QUICK-CONTROL-V1
+profile: FAST_SCALING_CONTROL_V1
 state_count: 64
 sampling_method: sobol
 seed: 20260818
@@ -9,4 +10,3 @@ feature_ranges:
 execution:
   workers: 4
   chunk_size: 32
-

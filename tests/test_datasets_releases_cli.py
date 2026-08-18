@@ -17,6 +17,7 @@ from nodi_foundation import (
     validate_release,
 )
 from nodi_foundation.cli import main
+from nodi_foundation.profiles import FAST_CONTROL_PROFILE
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -38,6 +39,7 @@ def test_dataset_release_is_deterministic_and_valid(tmp_path) -> None:
                     "wavelength": (5.5e-7, 7.0e-7),
                 },
                 seed=17,
+                profile=FAST_CONTROL_PROFILE,
                 execution=ExecutionSpec(workers=workers, chunk_size=chunk_size),
             )
         )
@@ -73,7 +75,7 @@ def test_pair_release_matches_schema(tmp_path) -> None:
 
 def test_cli_info_capabilities_simulate_and_dataset(tmp_path, capsys) -> None:
     assert main(["info"]) == 0
-    assert json.loads(capsys.readouterr().out)["package_version"] == "1.0.0"
+    assert json.loads(capsys.readouterr().out)["package_version"] == "2.0.0"
     assert main(["capabilities"]) == 0
     assert json.loads(capsys.readouterr().out)["feature_count"] == 26
 
@@ -98,6 +100,7 @@ def test_release_tamper_is_detected(tmp_path) -> None:
         DatasetSpec(
             output_dir=tmp_path / "release",
             state_count=2,
+            profile=FAST_CONTROL_PROFILE,
             execution=ExecutionSpec(workers=1),
         )
     )

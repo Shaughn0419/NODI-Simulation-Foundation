@@ -1,30 +1,30 @@
-schema_version: 1
-feature_version: '1.0'
-claim_ceiling: ANALYTICAL_M1_SYNTHETIC_CONTROLS_WITH_DECLARED_LIMITS
+schema_version: 2
+feature_version: '2.0'
+claim_ceiling: FIRST_ORDER_FORMAL_FIELD_COUPLING_M1_WITH_DECLARED_LIMITS
 features:
-  - {id: channel_width, path: geometry.width_m, unit: m, domain: [2.2e-7, 2.1e-6], capability: KERNEL_READY, role: GEOMETRY}
-  - {id: channel_depth, path: geometry.depth_m, unit: m, domain: [6.0e-8, 1.4e-6], capability: KERNEL_READY, role: PHASE}
-  - {id: sidewall_angle, path: geometry.sidewall_angle_deg, unit: deg, domain: [80.0, 90.0], capability: KERNEL_READY, role: GEOMETRY}
-  - {id: beam_offset_longitudinal, path: source.beam_offset_longitudinal_m, unit: m, domain: [-1.5e-6, 1.5e-6], capability: UNIFIED_SOURCE_ADAPTER, role: EXPOSURE_CONTROL}
-  - {id: beam_offset_lateral, path: source.beam_offset_lateral_m, unit: m, domain: [-1.5e-6, 1.5e-6], capability: UNIFIED_SOURCE_ADAPTER, role: EXPOSURE_CONTROL}
-  - {id: particle_diameter, path: particle.diameter_m, unit: m, domain: [2.0e-8, 1.6e-7], capability: KERNEL_READY, role: AMPLITUDE}
-  - {id: particle_n_real, path: particle.refractive_index_real, unit: '1', domain: [1.34, 2.0], capability: UNIFIED_MATERIAL_ADAPTER, role: PHASE_CONTRAST}
-  - {id: particle_n_imag, path: particle.refractive_index_imag, unit: '1', domain: [0.0, 0.2], capability: UNIFIED_MATERIAL_ADAPTER, role: PHASE}
-  - {id: particle_longitudinal, path: position.longitudinal_m, unit: m, domain: [-2.0e-6, 2.0e-6], capability: KERNEL_READY, role: EXPOSURE_CONTROL}
-  - {id: particle_lateral, path: position.lateral_fraction, unit: '1', domain: [-1.0, 1.0], capability: KERNEL_READY, role: EXPOSURE_CONTROL}
-  - {id: particle_depth, path: position.depth_fraction, unit: '1', domain: [0.05, 0.95], capability: KERNEL_READY, role: PHASE}
-  - {id: wavelength, path: source.wavelength_m, unit: m, domain: [4.0e-7, 7.0e-7], capability: KERNEL_READY, role: PHASE}
-  - {id: beam_waist, path: source.waist_m, unit: m, domain: [5.0e-7, 2.0e-6], capability: UNIFIED_SOURCE_ADAPTER, role: AMPLITUDE}
-  - {id: incident_power, path: source.incident_power_W, unit: W, domain: [0.25, 4.0], capability: UNIFIED_SOURCE_ADAPTER, role: EXACT_SCALING_CONTROL}
-  - {id: source_polarization_azimuth, path: source.polarization_azimuth_rad, unit: rad, domain: [0.0, 3.141592653589793], capability: UNIFIED_SOURCE_ADAPTER, role: EXPOSURE_CONTROL}
-  - {id: source_ellipticity, path: source.ellipticity_rad, unit: rad, domain: [-0.7853981633974483, 0.7853981633974483], capability: UNIFIED_SOURCE_ADAPTER, role: EXPOSURE_CONTROL}
-  - {id: degree_of_polarization, path: source.degree_of_polarization, unit: '1', domain: [0.0, 1.0], capability: UNIFIED_SOURCE_ADAPTER, role: EXPOSURE_CONTROL}
-  - {id: fill_refractive_index, path: environment.fill_refractive_index, unit: '1', domain: [1.30, 1.40], capability: UNIFIED_MATERIAL_ADAPTER, role: PHASE_CONTRAST}
-  - {id: wall_refractive_index, path: environment.wall_refractive_index, unit: '1', domain: [1.40, 1.55], capability: UNIFIED_MATERIAL_ADAPTER, role: PHASE_CONTRAST}
-  - {id: collection_na, path: observation.collection_na, unit: '1', domain: [0.40, 1.20], capability: UNIFIED_OPERATOR_ADAPTER, role: EXPOSURE_CONTROL}
-  - {id: analyzer_azimuth, path: observation.analyzer_azimuth_rad, unit: rad, domain: [0.0, 3.141592653589793], capability: UNIFIED_OPERATOR_ADAPTER, role: EXPOSURE_CONTROL}
-  - {id: analyzer_ellipticity, path: observation.analyzer_ellipticity_rad, unit: rad, domain: [-0.7853981633974483, 0.7853981633974483], capability: UNIFIED_OPERATOR_ADAPTER, role: EXPOSURE_CONTROL}
-  - {id: pupil_inner_radius, path: observation.pupil_inner_radius, unit: '1', domain: [0.0, 0.75], capability: UNIFIED_OPERATOR_ADAPTER, role: EXPOSURE_CONTROL}
-  - {id: pupil_outer_radius, path: observation.pupil_outer_radius, unit: '1', domain: [0.85, 1.0], capability: UNIFIED_OPERATOR_ADAPTER, role: EXPOSURE_CONTROL}
-  - {id: detector_sector_center, path: observation.detector_sector_center_rad, unit: rad, domain: [0.0, 6.283185307179586], capability: UNIFIED_OPERATOR_ADAPTER, role: EXPOSURE_CONTROL}
-  - {id: detector_sector_width, path: observation.detector_sector_width_rad, unit: rad, domain: [0.5235987755982988, 6.283185307179586], capability: UNIFIED_OPERATOR_ADAPTER, role: EXPOSURE_CONTROL}
+  - {id: channel_width, path: geometry.width_m, unit: m, domain: [2.2e-7, 2.1e-6], formal_status: FORMAL_DIRECT, role: GEOMETRY}
+  - {id: channel_depth, path: geometry.depth_m, unit: m, domain: [6.0e-8, 1.4e-6], formal_status: FORMAL_DIRECT, role: PHASE}
+  - {id: sidewall_angle, path: geometry.sidewall_angle_deg, unit: deg, domain: [80.0, 90.0], formal_status: FORMAL_WITH_LIMITS, role: GEOMETRY}
+  - {id: beam_offset_longitudinal, path: source.beam_offset_longitudinal_m, unit: m, domain: [-1.5e-6, 1.5e-6], formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}
+  - {id: beam_offset_lateral, path: source.beam_offset_lateral_m, unit: m, domain: [-1.5e-6, 1.5e-6], formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}
+  - {id: particle_diameter, path: particle.diameter_m, unit: m, domain: [2.0e-8, 1.6e-7], formal_status: FORMAL_DIRECT, role: AMPLITUDE}
+  - {id: particle_n_real, path: particle.refractive_index_real, unit: '1', domain: [1.34, 2.0], formal_status: FORMAL_DIRECT, role: PHASE_CONTRAST}
+  - {id: particle_n_imag, path: particle.refractive_index_imag, unit: '1', domain: [0.0, 0.2], formal_status: FORMAL_DIRECT, role: PHASE}
+  - {id: particle_longitudinal, path: position.longitudinal_m, unit: m, domain: [-2.0e-6, 2.0e-6], formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}
+  - {id: particle_lateral, path: position.lateral_fraction, unit: '1', domain: [-1.0, 1.0], formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}
+  - {id: particle_depth, path: position.depth_fraction, unit: '1', domain: [0.05, 0.95], formal_status: FORMAL_DIRECT, role: PHASE}
+  - {id: wavelength, path: source.wavelength_m, unit: m, domain: [4.0e-7, 7.0e-7], formal_status: FORMAL_DIRECT, role: PHASE}
+  - {id: beam_waist, path: source.waist_m, unit: m, domain: [5.0e-7, 2.0e-6], formal_status: FORMAL_DIRECT, role: AMPLITUDE}
+  - {id: incident_power, path: source.incident_power_W, unit: W, domain: [0.25, 4.0], formal_status: FORMAL_DIRECT, role: ABSOLUTE_POWER}
+  - {id: source_polarization_azimuth, path: source.polarization_azimuth_rad, unit: rad, domain: [0.0, 3.141592653589793], formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}
+  - {id: source_ellipticity, path: source.ellipticity_rad, unit: rad, domain: [-0.7853981633974483, 0.7853981633974483], formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}
+  - {id: degree_of_polarization, path: source.degree_of_polarization, unit: '1', domain: [0.0, 1.0], formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}
+  - {id: fill_refractive_index, path: environment.fill_refractive_index, unit: '1', domain: [1.30, 1.40], formal_status: FORMAL_WITH_LIMITS, role: PHASE_CONTRAST}
+  - {id: wall_refractive_index, path: environment.wall_refractive_index, unit: '1', domain: [1.40, 1.55], formal_status: FORMAL_WITH_LIMITS, role: PHASE_CONTRAST}
+  - {id: collection_na, path: observation.collection_na, unit: '1', domain: [0.40, 1.20], formal_status: FORMAL_WITH_LIMITS, formal_domain: [0.40, 0.99], role: EXPOSURE_CONTROL}
+  - {id: analyzer_azimuth, path: observation.analyzer_azimuth_rad, unit: rad, domain: [0.0, 3.141592653589793], formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}
+  - {id: analyzer_ellipticity, path: observation.analyzer_ellipticity_rad, unit: rad, domain: [-0.7853981633974483, 0.7853981633974483], formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}
+  - {id: pupil_inner_radius, path: observation.pupil_inner_radius, unit: '1', domain: [0.0, 0.75], formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}
+  - {id: pupil_outer_radius, path: observation.pupil_outer_radius, unit: '1', domain: [0.85, 1.0], formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}
+  - {id: detector_sector_center, path: observation.detector_sector_center_rad, unit: rad, domain: [0.0, 6.283185307179586], formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}
+  - {id: detector_sector_width, path: observation.detector_sector_width_rad, unit: rad, domain: [0.5235987755982988, 6.283185307179586], formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}

@@ -1,8 +1,8 @@
-"""Foundation-owned analytical M1 engine.
+"""Foundation-owned fast scaling control.
 
-The engine is calibrated to the frozen Paper 1 analytical M1 baseline and uses
-declared closed-form scaling outside that point. Baseline parity is an
-implementation identity; it is not full-wave or experimental validation.
+The control is calibrated to the frozen Paper 1 analytical M1 baseline and uses
+declared closed-form scaling outside that point. It is not formal-field or
+Paper 2 final-truth evidence.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ BASE_WALL_INDEX = 1.45
 BASE_COLLECTION_NA = 0.90
 CONFIG_HASH = canonical_sha256(
     {
-        "engine": "FOUNDATION_ANALYTICAL_M1_V1",
+        "engine": "FAST_SCALING_CONTROL_V1",
         "baseline_B_bg_W": BASE_B_BG_W,
         "baseline_S_W": BASE_S_W,
         "baseline_eta": [BASE_ETA_REAL, BASE_ETA_IMAG],
@@ -45,7 +45,7 @@ CONFIG_HASH = canonical_sha256(
 
 
 @dataclass(frozen=True, slots=True)
-class M1Primitives:
+class ScalingControlPrimitives:
     B_bg_W: float
     S_W: float
     C_r_W: float
@@ -55,6 +55,11 @@ class M1Primitives:
     eta_abs: float | None
     C_phase_rad: float | None
     operator_qualification_status: str
+    reference_block_id: str
+    particle_block_id: str
+    position_block_id: str
+    operator_block_id: str
+    numerical_receipt_ids: tuple[str, ...]
     config_hash: str = CONFIG_HASH
 
 
@@ -132,8 +137,37 @@ def _operator_factor(state: SimulationState) -> tuple[float, str]:
     return factor, status
 
 
-def evaluate_m1(state: SimulationState) -> M1Primitives:
-    """Evaluate the declared analytical M1 approximation for one validated state."""
+def _control_ids(state: SimulationState) -> tuple[str, str, str, str, tuple[str, ...]]:
+    payload = state.to_payload()
+    reference = canonical_sha256(
+        {
+            "control": "REFERENCE_SCALING",
+            "geometry": payload["geometry"],
+            "source": payload["source"],
+        }
+    )
+    particle = canonical_sha256(
+        {
+            "control": "RAYLEIGH_SCALING",
+            "particle": payload["particle"],
+            "environment": payload["environment"],
+        }
+    )
+    position = canonical_sha256(
+        {
+            "control": "POSITION_SCALING",
+            "position": payload["position"],
+            "geometry": payload["geometry"],
+        }
+    )
+    operator = canonical_sha256(
+        {"control": "OPERATOR_SCALING", "observation": payload["observation"]}
+    )
+    return reference, particle, position, operator, (CONFIG_HASH,)
+
+
+def evaluate_scaling_control(state: SimulationState) -> ScalingControlPrimitives:
+    """Evaluate the explicitly selected fast scaling control."""
 
     source = state.source
     environment = state.environment
@@ -157,7 +191,8 @@ def evaluate_m1(state: SimulationState) -> M1Primitives:
         BASE_FILL_INDEX,
         BASE_WALL_INDEX,
     )
-    operator_factor, qualification = _operator_factor(state)
+    operator_factor, _qualification = _operator_factor(state)
+    identifiers = _control_ids(state)
     collection_relative = (operator.collection_na / BASE_COLLECTION_NA) ** 2
     beam_reference_overlap = math.exp(
         -2.0
@@ -204,7 +239,7 @@ def evaluate_m1(state: SimulationState) -> M1Primitives:
     )
 
     if B_bg_W <= LOW_FIELD_W or S_W <= LOW_FIELD_W:
-        return M1Primitives(
+        return ScalingControlPrimitives(
             B_bg_W=max(B_bg_W, 0.0),
             S_W=max(S_W, 0.0),
             C_r_W=0.0,
@@ -213,7 +248,12 @@ def evaluate_m1(state: SimulationState) -> M1Primitives:
             eta_imag=None,
             eta_abs=None,
             C_phase_rad=None,
-            operator_qualification_status=qualification,
+            operator_qualification_status="SCALING_CONTROL_ONLY",
+            reference_block_id=identifiers[0],
+            particle_block_id=identifiers[1],
+            position_block_id=identifiers[2],
+            operator_block_id=identifiers[3],
+            numerical_receipt_ids=identifiers[4],
         )
 
     average_width = 0.5 * (state.geometry.width_m + bottom)
@@ -249,7 +289,7 @@ def evaluate_m1(state: SimulationState) -> M1Primitives:
     values = (B_bg_W, S_W, cross.real, cross.imag, eta.real, eta.imag, eta_abs, phase)
     if not all(math.isfinite(value) for value in values):
         raise FoundationError(E_NUMERICAL_NONFINITE, "analytical M1 produced a nonfinite value")
-    return M1Primitives(
+    return ScalingControlPrimitives(
         B_bg_W=B_bg_W,
         S_W=S_W,
         C_r_W=cross.real,
@@ -258,5 +298,10 @@ def evaluate_m1(state: SimulationState) -> M1Primitives:
         eta_imag=eta.imag,
         eta_abs=eta_abs,
         C_phase_rad=math.atan2(cross.imag, cross.real),
-        operator_qualification_status=qualification,
+        operator_qualification_status="SCALING_CONTROL_ONLY",
+        reference_block_id=identifiers[0],
+        particle_block_id=identifiers[1],
+        position_block_id=identifiers[2],
+        operator_block_id=identifiers[3],
+        numerical_receipt_ids=identifiers[4],
     )

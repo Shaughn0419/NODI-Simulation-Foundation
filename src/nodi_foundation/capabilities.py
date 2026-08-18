@@ -9,6 +9,7 @@ from typing import Any
 import yaml
 
 from .models import ENGINE_VERSION, FEATURE_VERSION, SCHEMA_VERSION, canonical_sha256
+from .profiles import FAST_CONTROL_PROFILE, FORMAL_PROFILE
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,9 +41,11 @@ def capabilities() -> CapabilityReport:
     features = tuple(
         {
             **row,
-            "implementation_status": (
-                "KERNEL_READY" if row["capability"] == "KERNEL_READY" else "SUPPORTED_WITH_LIMITS"
-            ),
+            "implementation_status": str(row["formal_status"]),
+            "profile_status": {
+                FORMAL_PROFILE: str(row["formal_status"]),
+                FAST_CONTROL_PROFILE: "SCALING_CONTROL_ONLY",
+            },
         }
         for row in raw_features
     )

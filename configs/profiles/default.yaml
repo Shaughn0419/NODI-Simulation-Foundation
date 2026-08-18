@@ -1,8 +1,11 @@
-profile_id: M1_ANALYTICAL_SYNTHETIC_V1
-engine: FOUNDATION_ANALYTICAL_M1_V1
-schema_version: '1.0'
-feature_version: '1.0'
+profile_id: FORMAL_FIELD_COUPLING_M1_V2
+engine: FORMAL_FIELD_COUPLING_M1_V2
+schema_version: '2.0'
+feature_version: '2.0'
 units: SI
 invalid_state_policy: REJECT
-operator_extension_status: SUPPORTED_WITH_LIMITS
-model_discrepancy_status: UNAVAILABLE_ANALYTICAL_M1_ONLY
+incident_power_semantics: ABSOLUTE_GAUSSIAN_BEAM_POWER_W
+fidelity_class: FORMAL_WITH_LIMITS
+claim_ceiling: FIRST_ORDER_FORMAL_FIELD_COUPLING_M1_WITH_DECLARED_LIMITS
+automatic_fast_fallback_allowed: false
+qualification_state: PENDING_R2_REPORT

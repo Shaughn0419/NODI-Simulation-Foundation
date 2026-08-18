@@ -14,19 +14,27 @@ from nodi_foundation import (
     simulate_state,
 )
 from nodi_foundation.errors import FoundationError
+from nodi_foundation.profiles import FAST_CONTROL_PROFILE, FORMAL_PROFILE
 
 
-def test_frozen_paper1_baseline_parity() -> None:
+def test_formal_baseline_is_independently_recomputed_within_declared_tolerance() -> None:
     result = simulate_state(SimulationState())
-    assert result.B_bg_W == pytest.approx(0.20297283613317754, rel=2.0e-15)
-    assert result.S_W == pytest.approx(3.1501989107668475e-7, rel=2.0e-15)
-    assert result.C_r_W == pytest.approx(-0.00011614407102063403, rel=2.0e-15)
-    assert result.C_i_W == pytest.approx(7.370152211533342e-5, rel=2.0e-15)
-    assert result.eta_real == pytest.approx(-0.4593133792174526, rel=2.0e-15)
-    assert result.eta_imag == pytest.approx(0.29146640787414346, rel=2.0e-15)
+    assert result.B_bg_W == pytest.approx(0.20297283613317754, rel=5.0e-2)
+    assert result.S_W == pytest.approx(3.1501989107668475e-7, rel=5.0e-2)
+    assert result.C_r_W == pytest.approx(-0.00011614407102063403, rel=5.0e-2)
+    assert result.C_i_W == pytest.approx(7.370152211533342e-5, rel=5.0e-2)
     assert result.Y_0_W == pytest.approx(result.S_W + 2.0 * result.C_r_W)
     assert result.combined_total_W == pytest.approx(result.B_bg_W + result.Y_0_W)
-    assert result.operator_qualification_status == "QUALIFIED_CANONICAL_FULL_PUPIL"
+    assert result.physics_profile_id == FORMAL_PROFILE
+    assert result.operator_qualification_status == "FORMAL_WITH_LIMITS"
+    assert len(result.numerical_receipt_ids) == 2
+
+
+def test_fast_control_preserves_v1_numbers_only_when_explicitly_selected() -> None:
+    result = simulate_state(SimulationState(physics_profile_id=FAST_CONTROL_PROFILE))
+    assert result.B_bg_W == pytest.approx(0.20297283613317754, rel=2.0e-15)
+    assert result.S_W == pytest.approx(3.1501989107668475e-7, rel=2.0e-15)
+    assert result.fidelity_class == "SCALING_CONTROL_ONLY"
 
 
 def test_state_and_result_identities_are_canonical() -> None:
@@ -54,7 +62,7 @@ def test_zero_particle_contrast_is_typed_low_field() -> None:
     assert result.C_phase_rad is None
 
 
-def test_partial_detector_sector_center_changes_cross_phase_only() -> None:
+def test_partial_detector_sector_is_bound_to_operator_identity() -> None:
     baseline = SimulationState()
     partial = replace(
         baseline,
@@ -70,9 +78,10 @@ def test_partial_detector_sector_center_changes_cross_phase_only() -> None:
     )
     first = simulate_state(partial)
     second = simulate_state(shifted)
-    assert second.B_bg_W == first.B_bg_W
-    assert second.S_W == first.S_W
-    assert second.C_phase_rad != first.C_phase_rad
+    assert second.B_bg_W == pytest.approx(first.B_bg_W, rel=1.0e-14)
+    assert second.S_W == pytest.approx(first.S_W, rel=1.0e-14)
+    assert second.operator_block_id != first.operator_block_id
+    assert second.result_hash != first.result_hash
 
 
 def test_observation_angle_is_algebraic() -> None:

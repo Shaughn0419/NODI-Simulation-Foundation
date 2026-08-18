@@ -1,0 +1,41 @@
+{
+  "profile_id": "FORMAL_FIELD_COUPLING_M1_V2",
+  "engine_version": "2.0.0",
+  "source_specification": {
+    "repository": "Shaughn0419/NODI_ReferenceCoupling_Paper",
+    "commit": "bb27a3ac882344e4ef26663102cd6c0a6882b675",
+    "mode": "INDEPENDENT_REIMPLEMENTATION_NO_RUNTIME_IMPORT"
+  },
+  "physics": {
+    "time_convention": "EXP_MINUS_I_OMEGA_T",
+    "incident_power_semantics": "ABSOLUTE_GAUSSIAN_BEAM_POWER_W",
+    "channel_length_waist_radii": 12.0,
+    "empty_channel_reference": "FINITE_2D_TRAPEZOID_REPLACEMENT_PHASE_SCREEN",
+    "particle": "HOMOGENEOUS_SPHERE_COMPLEX_MIE",
+    "local_excitation": "ANALYTIC_PARTIAL_REPLACEMENT_EMPTY_CHANNEL_FIELD",
+    "field_space": "VECTOR_ANGULAR_PUPIL_SQRT_W_PER_SQRT_SR",
+    "coupling": "COMMON_FIELD_B_S_C_TRACE_GAMMA_F_DAGGER_W_F"
+  },
+  "numerics": {
+    "production_pupil_order": [16, 32],
+    "qualification_pupil_orders": [[8, 16], [12, 24], [16, 32]],
+    "reference_gauss_order_per_axis": 64,
+    "mie_order_step": 4,
+    "mie_maximum_order": 512,
+    "mie_relative_tolerance": 1e-10,
+    "mie_absolute_tolerance": 1e-12,
+    "mie_consecutive_passes": 2,
+    "low_field_W": 1e-24
+  },
+  "claim_boundary": {
+    "fidelity_class": "FORMAL_WITH_LIMITS",
+    "claim_ceiling": "FIRST_ORDER_FORMAL_FIELD_COUPLING_M1_WITH_DECLARED_LIMITS",
+    "omissions": [
+      "NO_FULL_MAXWELL_BOUNDARY_SOLUTION",
+      "NO_FRESNEL_OR_REFRACTION",
+      "NO_MULTIPLE_SCATTERING_OR_PARTICLE_BACKACTION",
+      "NO_COMSOL_RUNTIME_OR_EXPERIMENTAL_AUTHORITY",
+      "NO_EVENT_TIME_OR_READOUT_CHAIN"
+    ]
+  }
+}

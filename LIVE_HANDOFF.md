@@ -2,8 +2,8 @@
 
 - Released product version: `v1.0.0` (immutable)
 - Target product version: `v2.0.0`
-- Current state: `FORMAL_M1_CORRECTION_ACTIVE`
-- Current batch: `R0_V1_RECLASSIFICATION_TO_R1_FORMAL_ENGINE`
+- Current state: `R1_FORMAL_ENGINE_COMPLETE_R2_ACTIVE`
+- Current batch: `R2_QUALIFICATION_PANEL_AND_NESTED_PILOT`
 - Physics specification source: Paper 1 analytical M1 at
   `bb27a3ac882344e4ef26663102cd6c0a6882b675`
 - Foundation physics base: `ea01b875d031c18541bf740c3db0a21868d2e318`
@@ -11,7 +11,8 @@
 - Released engine/schema/feature identity: `1.0.0 / 1.0 / 1.0`
 - Target engine/schema/feature identity: `2.0.0 / 2.0 / 2.0`
 - Maximum aggregate workers: `24`
-- Formal production workers selected by pilot: `1`
+- Historical v1 control production workers: `1`
+- Formal v2 production workers: `PENDING_R2_PILOT`
 - Committed-memory ceiling: `<210000000000 bytes`
 - External-consumer smoke: `PASS`
 - Reference-release validation: `PASS`
@@ -59,3 +60,11 @@ Evaluation products. Formal requests fail closed; there is no fast-profile
 fallback. COMSOL and the event-time/readout chain are not required by this
 route. Large datasets, build products, raw logs, checkpoints, and rebuildable
 fragments remain outside Git.
+
+R1 now provides the standalone finite trapezoid reference, absolute Gaussian
+power normalization, complex homogeneous Mie amplitudes, analytic local field,
+vector pupil/operator, common-field `B/S/C` coupling, stable factor block IDs,
+and numerical receipt IDs. The default canonical state is within 0.1% of the
+frozen reference `B`, reproduces `S` at numerical precision, and is within 5%
+for both complex `C` components. These are implementation observations pending
+the single R2 qualification report, not a release promotion.

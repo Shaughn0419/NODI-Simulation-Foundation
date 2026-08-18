@@ -18,7 +18,7 @@ profile never serves as an automatic fallback for the formal profile.
 Python 3.12 is required.
 
 ```text
-python -m pip install nodi_foundation-1.0.0-py3-none-any.whl
+python -m pip install nodi_foundation-2.0.0-py3-none-any.whl
 nodi-foundation info
 nodi-foundation capabilities
 nodi-foundation simulate examples/state.yaml --output result.json
@@ -34,12 +34,17 @@ from nodi_foundation import SimulationState, derive_observation, simulate_state
 result = simulate_state(SimulationState())
 print(result.S_W, result.C_r_W, result.C_i_W)
 print(derive_observation(result, theta=0.0))
-print(result.applicability_profile_id, result.operator_qualification_status)
+print(result.physics_profile_id, result.fidelity_class, result.claim_ceiling)
 ```
+
+`SimulationState()` selects `FORMAL_FIELD_COUPLING_M1_V2`. The old scaling
+control runs only when `physics_profile_id="FAST_SCALING_CONTROL_V1"` is set
+explicitly. A formal-domain or numerical failure is returned as an error; it
+never switches profiles.
 
 ## Stable API
 
-Only these six functions form the v1 compatibility contract:
+Only these six functions form the public compatibility contract:
 
 - `simulate_state(state_spec) -> StateResult` validates and evaluates one state.
 - `simulate_batch(states, execution=...) -> BatchResult` preserves input order
@@ -53,16 +58,33 @@ Only these six functions form the v1 compatibility contract:
 - `validate_release(path) -> ValidationReport` checks manifest identity, file
   sizes, hashes, and safe relative paths.
 
-`SimulationState` is an immutable nested model with explicit SI-unit names for
+`SimulationState` is an immutable nested model with an explicit physics profile
+and SI-unit names for
 geometry, particle, position, source, environment, and observation operator.
 Invalid coupled states are rejected rather than clipped. `StateResult` exposes
 `B_bg_W`, `S_W`, `C_r_W`, `C_i_W`, `Y_0_W`, complex-overlap metadata,
-applicability status, versions, and canonical identities. Full field details
+fidelity and claim ceilings, factorized block IDs, numerical-receipt IDs,
+versions, and canonical identities. Full field details
 are defined by [state_schema.json](schemas/state_schema.json) and intervention
 rows by [pair_schema.json](schemas/pair_schema.json).
 
-Stable error codes are `E_DOMAIN_INVALID`, `E_SCHEMA_INCOMPATIBLE`,
+Stable error codes remain `E_DOMAIN_INVALID`, `E_SCHEMA_INCOMPATIBLE`,
 `E_NUMERICAL_NONFINITE`, `E_RESOURCE_LIMIT`, and `E_RELEASE_INVALID`.
+
+## Formal field-coupling profile
+
+The v2 engine independently evaluates an absolutely power-normalized Gaussian
+source, finite-length trapezoid replacement-phase reference field, analytic
+local empty-channel excitation, complex homogeneous-sphere Mie amplitudes,
+vector angular pupil, and one common positive operator for `B`, `S`, and `C`.
+Reference, particle, position, and operator identities are separately hashed so
+nested production can reuse real intermediate blocks. Its declared ceiling is
+first-order M1 with explicit omissions; it is not full Maxwell, COMSOL,
+experimental, event-time, or detector-readout authority.
+
+R1 engine implementation and deterministic contract tests are complete on the
+mainline. A qualification report and nested performance pilot are required
+before v2 reference datasets are released.
 
 ## Frozen v1 control products
 
@@ -79,7 +101,7 @@ Paper 2 intake, or establish that all 26 variables have formal-field support.
 | NODI-ATLAS-EVAL-INPUTS-V1 | 65,536 | `2a1e513b1ff022d93e508d1a9d0bfa94782374ba14cc2ce706d3bc8f78fc2eff` |
 | NODI-ATLAS-EVAL-LABELS-V1.sealed | 65,536 | `94930a90743425fdb6f729aacd2cad519012bf18cac1cc8cee99346bbe09c7e2` |
 
-The exact current receipts are in
+The exact immutable v1 receipts are in
 [n3_release_manifest.json](n3_release_manifest.json); large tables and sealed
 labels remain outside Git under the ignored content-addressed release root.
 Quickstart is a deterministic subset of the capability release and performs no
@@ -97,9 +119,9 @@ python tools/build_reference_releases.py
 ```
 
 Production is deterministic, chunked, recoverable, and capped at 24 aggregate
-workers and less than 210,000,000,000 committed bytes. The N3 pilot measured
-the closed-form kernel at about 15,876 states/s with one worker; multiprocessing
-was slower, so the formal releases correctly used one worker. Raw logs,
+workers and less than 210,000,000,000 committed bytes. The historical v1 N3
+pilot measured the control kernel at about 15,876 states/s with one worker.
+The formal v2 worker choice is set only by its R2 nested pilot. Raw logs,
 checkpoints, rebuildable fragments, and large state tables are not committed.
 
 ## Scientific boundary and correction state

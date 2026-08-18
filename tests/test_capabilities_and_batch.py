@@ -15,9 +15,13 @@ def test_capability_catalogue_has_exact_candidate_universe() -> None:
     assert report.feature_count == 26
     assert len({row["id"] for row in report.features}) == 26
     assert {row["implementation_status"] for row in report.features} == {
-        "KERNEL_READY",
-        "SUPPORTED_WITH_LIMITS",
+        "FORMAL_DIRECT",
+        "FORMAL_WITH_LIMITS",
     }
+    assert all(
+        row["profile_status"]["FAST_SCALING_CONTROL_V1"] == "SCALING_CONTROL_ONLY"
+        for row in report.features
+    )
     assert len(report.catalogue_hash) == 64
 
 
