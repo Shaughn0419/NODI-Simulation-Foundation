@@ -22,7 +22,15 @@ from .batch import ExecutionSpec, simulate_batch
 from .capabilities import capabilities
 from .errors import E_DOMAIN_INVALID, FoundationError
 from .models import ENGINE_VERSION, FEATURE_VERSION, SimulationState, StateResult
-from .profiles import FORMAL_PROFILE, SUPPORTED_PROFILES
+from .profiles import (
+    FORMAL_IMPLEMENTATION_SHA256,
+    FORMAL_NUMERICAL_PROFILE_SHA256,
+    FORMAL_PARITY_PANEL_SHA256,
+    FORMAL_PROFILE,
+    FORMAL_QUALIFICATION_MATRIX_SHA256,
+    FORMAL_QUALIFICATION_REPORT_SHA256,
+    SUPPORTED_PROFILES,
+)
 from .releases import DatasetRelease, write_release_manifest
 
 
@@ -298,11 +306,9 @@ def build_dataset(dataset_spec: DatasetSpec) -> DatasetRelease:
                 E_DOMAIN_INVALID, "formal dataset must bind the current feature catalogue hash"
             )
         qualification = dataset_spec.qualification_report_hash
-        if qualification is None or len(qualification) != 64 or any(
-            char not in "0123456789abcdef" for char in qualification
-        ):
+        if qualification != FORMAL_QUALIFICATION_REPORT_SHA256:
             raise FoundationError(
-                E_DOMAIN_INVALID, "formal dataset must bind a qualification report SHA-256"
+                E_DOMAIN_INVALID, "formal dataset must bind the qualified report SHA-256"
             )
     states = sample_states(dataset_spec)
     dataset_spec.output_dir.mkdir(parents=True, exist_ok=True)
@@ -330,7 +336,20 @@ def build_dataset(dataset_spec: DatasetSpec) -> DatasetRelease:
         "release_name": dataset_spec.release_name,
         "profile": dataset_spec.profile,
         "feature_catalogue_hash": dataset_spec.feature_catalogue_hash,
-        "qualification_report_hash": dataset_spec.qualification_report_hash,
+        "qualification_report_sha256": dataset_spec.qualification_report_hash,
+        "physics_implementation_sha256": (
+            FORMAL_IMPLEMENTATION_SHA256 if dataset_spec.profile == FORMAL_PROFILE else None
+        ),
+        "numerical_profile_sha256": (
+            FORMAL_NUMERICAL_PROFILE_SHA256 if dataset_spec.profile == FORMAL_PROFILE else None
+        ),
+        "qualification_matrix_sha256": (
+            FORMAL_QUALIFICATION_MATRIX_SHA256 if dataset_spec.profile == FORMAL_PROFILE else None
+        ),
+        "parity_panel_sha256": (
+            FORMAL_PARITY_PANEL_SHA256 if dataset_spec.profile == FORMAL_PROFILE else None
+        ),
+        "paper2_final_truth_eligible": dataset_spec.profile == FORMAL_PROFILE,
         "state_count": dataset_spec.state_count,
         "sampling_method": dataset_spec.sampling_method,
         "seed": dataset_spec.seed,

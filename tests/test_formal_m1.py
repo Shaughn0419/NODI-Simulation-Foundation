@@ -1,13 +1,23 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
 from nodi_foundation import ObservationOperatorState, SimulationState, simulate_state
 from nodi_foundation._physics.formal_m1 import evaluate_formal_m1
 from nodi_foundation.errors import FoundationError
-from nodi_foundation.profiles import FAST_CONTROL_PROFILE
+from nodi_foundation.models import canonical_sha256
+from nodi_foundation.profiles import (
+    FAST_CONTROL_PROFILE,
+    FORMAL_IMPLEMENTATION_SHA256,
+    FORMAL_QUALIFICATION_REPORT_SHA256,
+)
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_declared_pupil_refinement_converges() -> None:
@@ -47,3 +57,17 @@ def test_formal_failure_does_not_fallback_to_fast_control() -> None:
     )
     assert control.fidelity_class == "SCALING_CONTROL_ONLY"
 
+
+def test_qualification_report_and_implementation_are_exactly_bound() -> None:
+    report_path = ROOT / "formal_m1_v2_qualification_report.json"
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert hashlib.sha256(report_path.read_bytes()).hexdigest() == (
+        FORMAL_QUALIFICATION_REPORT_SHA256
+    )
+    payload_hash = report.pop("payload_sha256")
+    assert canonical_sha256(report) == payload_hash
+    implementation = ROOT / "src/nodi_foundation/_physics/formal_m1.py"
+    normalized = implementation.read_text(encoding="utf-8").replace("\r\n", "\n")
+    assert hashlib.sha256(normalized.encode("utf-8")).hexdigest() == (
+        FORMAL_IMPLEMENTATION_SHA256
+    )

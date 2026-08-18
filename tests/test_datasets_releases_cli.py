@@ -5,6 +5,7 @@ from pathlib import Path
 
 import jsonschema
 import pyarrow.parquet as pq
+import pytest
 import yaml
 
 from nodi_foundation import (
@@ -14,10 +15,16 @@ from nodi_foundation import (
     SimulationState,
     build_dataset,
     build_intervention_pairs,
+    capabilities,
     validate_release,
 )
 from nodi_foundation.cli import main
-from nodi_foundation.profiles import FAST_CONTROL_PROFILE
+from nodi_foundation.errors import FoundationError
+from nodi_foundation.models import canonical_json, canonical_sha256
+from nodi_foundation.profiles import (
+    FAST_CONTROL_PROFILE,
+    FORMAL_QUALIFICATION_REPORT_SHA256,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -55,6 +62,7 @@ def test_dataset_release_is_deterministic_and_valid(tmp_path) -> None:
 
 
 def test_pair_release_matches_schema(tmp_path) -> None:
+    catalogue_hash = capabilities().catalogue_hash
     release = build_intervention_pairs(
         PairSpec(
             output_dir=tmp_path / "pairs",
@@ -63,6 +71,8 @@ def test_pair_release_matches_schema(tmp_path) -> None:
             low_value=6.0e-8,
             high_value=1.2e-7,
             execution=ExecutionSpec(workers=1),
+            feature_catalogue_hash=catalogue_hash,
+            qualification_report_hash=FORMAL_QUALIFICATION_REPORT_SHA256,
         )
     )
     assert release.pair_count == 1
@@ -71,6 +81,43 @@ def test_pair_release_matches_schema(tmp_path) -> None:
     schema = json.loads((ROOT / "schemas/pair_schema.json").read_text(encoding="utf-8"))
     jsonschema.Draft202012Validator(schema).validate(row)
     assert row["delta_S_W"] > 0.0
+
+
+def test_formal_release_requires_and_preserves_qualification_binding(tmp_path) -> None:
+    catalogue_hash = capabilities().catalogue_hash
+    with pytest.raises(FoundationError, match="qualified report"):
+        build_dataset(
+            DatasetSpec(
+                output_dir=tmp_path / "unqualified",
+                state_count=1,
+                feature_catalogue_hash=catalogue_hash,
+                qualification_report_hash="0" * 64,
+                execution=ExecutionSpec(workers=1),
+            )
+        )
+    release = build_dataset(
+        DatasetSpec(
+            output_dir=tmp_path / "formal",
+            state_count=2,
+            feature_catalogue_hash=catalogue_hash,
+            qualification_report_hash=FORMAL_QUALIFICATION_REPORT_SHA256,
+            execution=ExecutionSpec(workers=1),
+        )
+    )
+    assert validate_release(release.path).valid
+    table = pq.read_table(release.path / "data.parquet", columns=["physics_profile_id"])
+    assert set(table["physics_profile_id"].to_pylist()) == {"FORMAL_FIELD_COUPLING_M1_V2"}
+
+    manifest_path = release.path / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["metadata"]["profile"] = FAST_CONTROL_PROFILE
+    manifest["metadata"]["paper2_final_truth_eligible"] = False
+    body = dict(manifest)
+    body.pop("release_id")
+    manifest["release_id"] = canonical_sha256(body)
+    manifest_path.write_text(canonical_json(manifest) + "\n", encoding="utf-8")
+    report = validate_release(release.path)
+    assert "E_RELEASE_MIXED_OR_MISMATCHED_PROFILE_ROWS" in report.errors
 
 
 def test_cli_info_capabilities_simulate_and_dataset(tmp_path, capsys) -> None:

@@ -81,3 +81,14 @@ Large data files are intentionally not stored in Git. Access is controlled by
 the Foundation owner; the sealed label artifact has a stricter owner-only
 delivery state. Code and data reuse are governed by `LICENSE`. Cite the
 software using `CITATION.cff` and include the exact dataset release ID used.
+
+## v2 formal release boundary
+
+`FORMAL_FIELD_COUPLING_M1_V2` passed its single 384-state qualification panel
+and 4,096-state nested performance pilot with disposition `PASS_WITH_LIMITS`.
+The binding report is `formal_m1_v2_qualification_report.json`, file SHA-256
+`1b2059100a3d18260ca3e4c65f9ee9a72095e062063910a3a3651bd92f1b94f3`.
+Formal releases must bind that exact report, physics implementation, feature
+catalogue, qualification matrix, and parity panel; release validation rejects
+missing/mixed profile rows. No v2 dataset exists until the formal capability
+sprint independently freezes its retained features and exposure families.

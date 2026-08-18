@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from importlib.resources import files
 from typing import Any, cast
@@ -344,6 +344,7 @@ def _analyzer_weight(state: SimulationState) -> ComplexArray:
     return np.asarray([[1.0 + q, u - 1j * v], [u + 1j * v, 1.0 - q]])
 
 
+@lru_cache(maxsize=8192)
 def _fields(
     state: SimulationState, grid: PupilGrid
 ) -> tuple[ComplexArray, ComplexArray, MieSolution]:
@@ -487,14 +488,12 @@ def _block_ids(state: SimulationState, grid: PupilGrid) -> tuple[str, str, str, 
     return reference, particle, position, operator
 
 
-def evaluate_formal_m1(
+@lru_cache(maxsize=16384)
+def _evaluate_formal_cached(
     state: SimulationState,
-    *,
-    pupil_order: tuple[int, int] | None = None,
+    pupil_order: tuple[int, int],
 ) -> FormalPrimitives:
-    """Evaluate the formal first-order M1 field chain for one validated state."""
-
-    radial, azimuthal = pupil_order or tuple(NUMERICS["production_pupil_order"])
+    radial, azimuthal = pupil_order
     grid = _pupil_grid(
         state.observation.collection_na,
         state.observation.pupil_inner_radius,
@@ -504,7 +503,21 @@ def evaluate_formal_m1(
         int(radial),
         int(azimuthal),
     )
-    reference, particle, mie = _fields(state, grid)
+    field_state = replace(
+        state,
+        source=replace(
+            state.source,
+            polarization_azimuth_rad=0.0,
+            ellipticity_rad=0.0,
+            degree_of_polarization=0.0,
+        ),
+        observation=replace(
+            state.observation,
+            analyzer_azimuth_rad=0.0,
+            analyzer_ellipticity_rad=0.0,
+        ),
+    )
+    reference, particle, mie = _fields(field_state, grid)
     gamma = _source_covariance(state)
     analyzer = _analyzer_weight(state)
     rr = complex(np.trace(gamma @ _gram(reference, reference, grid.weights_sr, analyzer)))
@@ -563,3 +576,45 @@ def evaluate_formal_m1(
         operator_id,
         receipts,
     )
+
+
+def evaluate_formal_m1(
+    state: SimulationState,
+    *,
+    pupil_order: tuple[int, int] | None = None,
+) -> FormalPrimitives:
+    """Evaluate the formal first-order M1 field chain for one validated state."""
+
+    order = pupil_order or tuple(NUMERICS["production_pupil_order"])
+    return _evaluate_formal_cached(state, (int(order[0]), int(order[1])))
+
+
+def _cache_payload(info: object) -> dict[str, int | None]:
+    values = info  # cache_info named tuple at runtime
+    return {
+        "hits": int(getattr(values, "hits")),
+        "misses": int(getattr(values, "misses")),
+        "maxsize": getattr(values, "maxsize"),
+        "current_size": int(getattr(values, "currsize")),
+    }
+
+
+def formal_cache_stats() -> dict[str, dict[str, int | None]]:
+    """Return compact in-process cache statistics for qualification receipts."""
+
+    return {
+        "reference": _cache_payload(_reference_scalar.cache_info()),
+        "mie": _cache_payload(_mie_solution.cache_info()),
+        "position_field": _cache_payload(_fields.cache_info()),
+        "operator_summary": _cache_payload(_evaluate_formal_cached.cache_info()),
+    }
+
+
+def clear_formal_caches() -> None:
+    """Clear all formal caches before a cold qualification or performance run."""
+
+    _evaluate_formal_cached.cache_clear()
+    _fields.cache_clear()
+    _reference_scalar.cache_clear()
+    _mie_solution.cache_clear()
+    _pupil_grid.cache_clear()

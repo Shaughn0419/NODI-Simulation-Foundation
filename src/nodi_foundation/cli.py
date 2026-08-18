@@ -138,6 +138,16 @@ def main(argv: list[str] | None = None) -> int:
             high_value=float(raw["high_value"]),
             release_name=str(raw.get("release_name", "NODI-PAIRS-CUSTOM-V2")),
             execution=_execution(args),
+            feature_catalogue_hash=(
+                None
+                if raw.get("feature_catalogue_hash") is None
+                else str(raw["feature_catalogue_hash"])
+            ),
+            qualification_report_hash=(
+                None
+                if raw.get("qualification_report_hash") is None
+                else str(raw["qualification_report_hash"])
+            ),
         )
         print(build_intervention_pairs(spec).release_id)
         return 0

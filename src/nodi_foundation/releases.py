@@ -17,6 +17,15 @@ from .models import (
     canonical_json,
     canonical_sha256,
 )
+from .profiles import (
+    FAST_CONTROL_PROFILE,
+    FORMAL_IMPLEMENTATION_SHA256,
+    FORMAL_NUMERICAL_PROFILE_SHA256,
+    FORMAL_PARITY_PANEL_SHA256,
+    FORMAL_PROFILE,
+    FORMAL_QUALIFICATION_MATRIX_SHA256,
+    FORMAL_QUALIFICATION_REPORT_SHA256,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +153,43 @@ def validate_release(path: str | Path) -> ValidationReport:
             errors.append(f"E_RELEASE_SIZE_MISMATCH:{row['path']}")
         if sha256_file(artifact) != row.get("sha256"):
             errors.append(f"E_RELEASE_HASH_MISMATCH:{row['path']}")
+    metadata = manifest.get("metadata")
+    if manifest.get("engine_version") == "2.0.0" and release_type in {
+        "NODI_DATASET_RELEASE",
+        "NODI_PAIR_RELEASE",
+    }:
+        if not isinstance(metadata, dict):
+            errors.append("E_RELEASE_PROFILE_METADATA_MISSING")
+        else:
+            profile = metadata.get("profile")
+            if profile not in {FORMAL_PROFILE, FAST_CONTROL_PROFILE}:
+                errors.append("E_RELEASE_PROFILE_INVALID")
+            if profile == FORMAL_PROFILE:
+                expected = {
+                    "qualification_report_sha256": FORMAL_QUALIFICATION_REPORT_SHA256,
+                    "physics_implementation_sha256": FORMAL_IMPLEMENTATION_SHA256,
+                    "numerical_profile_sha256": FORMAL_NUMERICAL_PROFILE_SHA256,
+                    "qualification_matrix_sha256": FORMAL_QUALIFICATION_MATRIX_SHA256,
+                    "parity_panel_sha256": FORMAL_PARITY_PANEL_SHA256,
+                    "paper2_final_truth_eligible": True,
+                }
+                if any(metadata.get(key) != value for key, value in expected.items()):
+                    errors.append("E_RELEASE_FORMAL_QUALIFICATION_BINDING_MISMATCH")
+            elif metadata.get("paper2_final_truth_eligible") is not False:
+                errors.append("E_RELEASE_FAST_CONTROL_PAPER2_ELIGIBILITY_INVALID")
+            if files and isinstance(files[0], dict) and isinstance(files[0].get("path"), str):
+                try:
+                    import pyarrow as pa
+                    import pyarrow.parquet as pq
+
+                    table = pq.read_table(  # type: ignore[no-untyped-call]
+                        directory / files[0]["path"], columns=["physics_profile_id"]
+                    )
+                    row_profiles = set(table["physics_profile_id"].to_pylist())
+                    if row_profiles != {profile}:
+                        errors.append("E_RELEASE_MIXED_OR_MISMATCHED_PROFILE_ROWS")
+                except (OSError, KeyError, pa.ArrowException):
+                    errors.append("E_RELEASE_PROFILE_COLUMN_MISSING")
     return ValidationReport(
         valid=not errors,
         release_id=release_id if isinstance(release_id, str) else None,

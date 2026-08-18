@@ -41,6 +41,7 @@ packages = ["src/nodi_foundation"]
 "schemas" = "nodi_foundation/schemas"
 "examples" = "nodi_foundation/examples"
 "configs/profiles" = "nodi_foundation/profiles"
+"formal_m1_v2_qualification_report.json" = "nodi_foundation/qualification/formal_m1_v2_qualification_report.json"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -82,9 +82,12 @@ nested production can reuse real intermediate blocks. Its declared ceiling is
 first-order M1 with explicit omissions; it is not full Maxwell, COMSOL,
 experimental, event-time, or detector-readout authority.
 
-R1 engine implementation and deterministic contract tests are complete on the
-mainline. A qualification report and nested performance pilot are required
-before v2 reference datasets are released.
+R1 engine implementation and the single R2 qualification/pilot are complete.
+The 384-state panel passed with declared limits, and the 4,096-state nested
+pilot selected one worker and chunk size 1,024. The binding report SHA-256 is
+`1b2059100a3d18260ca3e4c65f9ee9a72095e062063910a3a3651bd92f1b94f3`.
+No v2 reference dataset is issued before the formal capability sprint freezes
+the retained feature set and new exposure families.
 
 ## Frozen v1 control products
 

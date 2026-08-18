@@ -2,8 +2,8 @@
 
 - Released product version: `v1.0.0` (immutable)
 - Target product version: `v2.0.0`
-- Current state: `R1_FORMAL_ENGINE_COMPLETE_R2_ACTIVE`
-- Current batch: `R2_QUALIFICATION_PANEL_AND_NESTED_PILOT`
+- Current state: `R2_PASS_WITH_LIMITS_R3_ACTIVE`
+- Current batch: `R3_FORMAL_CAPABILITY_SPRINT`
 - Physics specification source: Paper 1 analytical M1 at
   `bb27a3ac882344e4ef26663102cd6c0a6882b675`
 - Foundation physics base: `ea01b875d031c18541bf740c3db0a21868d2e318`
@@ -12,7 +12,9 @@
 - Target engine/schema/feature identity: `2.0.0 / 2.0 / 2.0`
 - Maximum aggregate workers: `24`
 - Historical v1 control production workers: `1`
-- Formal v2 production workers: `PENDING_R2_PILOT`
+- Formal v2 production workers: `1`
+- Formal v2 chunk size: `1024`
+- Qualification report SHA-256: `1b2059100a3d18260ca3e4c65f9ee9a72095e062063910a3a3651bd92f1b94f3`
 - Committed-memory ceiling: `<210000000000 bytes`
 - External-consumer smoke: `PASS`
 - Reference-release validation: `PASS`
@@ -68,3 +70,11 @@ and numerical receipt IDs. The default canonical state is within 0.1% of the
 frozen reference `B`, reproduces `S` at numerical precision, and is within 5%
 for both complex `C` components. These are implementation observations pending
 the single R2 qualification report, not a release promotion.
+
+R2 disposition is `PASS_WITH_LIMITS`: 384/384 predeclared panel cases passed,
+maximum middle-to-final complex-field refinement was 2.93%, and all direct
+parity plus extension invariants passed. The 4,096-state profiled cold pilot
+took 3.88 s and the warm operator-summary replay 0.203 s; reference and Mie each
+had 64 misses/960 hits, position-field had 1,024 misses/3,072 hits, and observed
+system committed-memory peak was about 47.0 GB. R3 may now run; v2 final data
+remain forbidden until the formal feature/exposure freeze is complete.
