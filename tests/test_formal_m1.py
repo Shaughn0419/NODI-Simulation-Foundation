@@ -22,11 +22,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_declared_pupil_refinement_converges() -> None:
     state = SimulationState()
-    middle = evaluate_formal_m1(state, pupil_order=(12, 24))
-    final = evaluate_formal_m1(state, pupil_order=(16, 32))
+    production = evaluate_formal_m1(state, pupil_order=(32, 64), reference_order=96)
+    strict = evaluate_formal_m1(state, pupil_order=(40, 80), reference_order=128)
     for name in ("B_bg_W", "S_W", "C_r_W", "C_i_W"):
-        expected = getattr(final, name)
-        assert getattr(middle, name) == pytest.approx(expected, rel=2.0e-2, abs=1.0e-24)
+        expected = getattr(strict, name)
+        assert getattr(production, name) == pytest.approx(
+            expected, rel=1.0e-2, abs=1.0e-24
+        )
 
 
 def test_absolute_incident_power_scales_all_quadratic_primitives() -> None:
@@ -59,7 +61,7 @@ def test_formal_failure_does_not_fallback_to_fast_control() -> None:
 
 
 def test_qualification_report_and_implementation_are_exactly_bound() -> None:
-    report_path = ROOT / "formal_m1_v2_qualification_report.json"
+    report_path = ROOT / "formal_m1_v3_dry_etch_qualification_report.json"
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert hashlib.sha256(report_path.read_bytes()).hexdigest() == (
         FORMAL_QUALIFICATION_REPORT_SHA256

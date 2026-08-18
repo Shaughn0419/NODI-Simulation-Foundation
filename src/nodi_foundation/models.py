@@ -16,9 +16,11 @@ from .errors import (
     FoundationError,
 )
 
-SCHEMA_VERSION = "2.0"
-ENGINE_VERSION = "2.0.0"
-FEATURE_VERSION = "2.0"
+SCHEMA_VERSION = "3.0"
+ENGINE_VERSION = "3.0.0"
+FEATURE_VERSION = "3.0"
+
+BOTTOM_WIDTH_RELATIVE_TOLERANCE = 1.0e-12
 
 
 def canonical_json(value: object) -> str:
@@ -51,6 +53,27 @@ def _closed(name: str, value: float, lower: float, upper: float) -> None:
         raise FoundationError(E_DOMAIN_INVALID, f"{name} must be in [{lower}, {upper}]")
 
 
+def raw_bottom_width(width_m: float, depth_m: float, sidewall_angle_deg: float) -> float:
+    """Return the signed ideal trapezoid bottom width without clipping."""
+
+    if sidewall_angle_deg == 90.0:
+        return width_m
+    return width_m - 2.0 * depth_m / math.tan(math.radians(sidewall_angle_deg))
+
+
+def dry_etch_bottom_width(width_m: float, depth_m: float, sidewall_angle_deg: float) -> float:
+    """Return the nonnegative dry-etch bottom width, canonicalizing roundoff only."""
+
+    removal = 0.0
+    if sidewall_angle_deg != 90.0:
+        removal = 2.0 * depth_m / math.tan(math.radians(sidewall_angle_deg))
+    raw = width_m - removal
+    tolerance = BOTTOM_WIDTH_RELATIVE_TOLERANCE * max(width_m, removal, 1.0e-9)
+    if raw < -tolerance:
+        raise FoundationError(E_DOMAIN_INVALID, "dry-etch sidewalls produce negative bottom width")
+    return 0.0 if raw <= tolerance else raw
+
+
 @dataclass(frozen=True, slots=True)
 class GeometryState:
     width_m: float = 8.0e-7
@@ -58,14 +81,9 @@ class GeometryState:
     sidewall_angle_deg: float = 90.0
 
     def __post_init__(self) -> None:
-        _closed("width_m", self.width_m, 2.2e-7, 2.1e-6)
-        _closed("depth_m", self.depth_m, 6.0e-8, 1.4e-6)
-        _closed("sidewall_angle_deg", self.sidewall_angle_deg, 80.0, 90.0)
-        bottom = self.width_m - 2.0 * self.depth_m / math.tan(math.radians(self.sidewall_angle_deg))
-        if bottom <= 0.0:
-            raise FoundationError(
-                E_DOMAIN_INVALID, "sidewall angle produces nonpositive bottom width"
-            )
+        _closed("width_m", self.width_m, 2.0e-7, 2.1e-6)
+        _closed("depth_m", self.depth_m, 6.0e-8, 2.0e-6)
+        _closed("sidewall_angle_deg", self.sidewall_angle_deg, 70.0, 90.0)
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,7 +93,7 @@ class ParticleState:
     refractive_index_imag: float = 0.0
 
     def __post_init__(self) -> None:
-        _closed("diameter_m", self.diameter_m, 2.0e-8, 1.6e-7)
+        _closed("diameter_m", self.diameter_m, 2.0e-8, 2.0e-7)
         _closed("refractive_index_real", self.refractive_index_real, 1.30, 2.00)
         _closed("refractive_index_imag", self.refractive_index_imag, 0.0, 0.20)
 
@@ -104,7 +122,7 @@ class SourceState:
     degree_of_polarization: float = 0.0
 
     def __post_init__(self) -> None:
-        _closed("wavelength_m", self.wavelength_m, 4.0e-7, 7.0e-7)
+        _closed("wavelength_m", self.wavelength_m, 4.0e-7, 9.0e-7)
         _closed("waist_m", self.waist_m, 5.0e-7, 2.0e-6)
         _closed("incident_power_W", self.incident_power_W, 0.25, 4.0)
         _finite("beam_offset_longitudinal_m", self.beam_offset_longitudinal_m)
@@ -168,15 +186,55 @@ class SimulationState:
     source: SourceState = SourceState()
     environment: EnvironmentState = EnvironmentState()
     observation: ObservationOperatorState = ObservationOperatorState()
-    physics_profile_id: str = "FORMAL_FIELD_COUPLING_M1_V2"
+    physics_profile_id: str = "FORMAL_FIELD_COUPLING_M1_V3_DRY_ETCH"
 
     def __post_init__(self) -> None:
-        from .profiles import SUPPORTED_PROFILES
+        from .profiles import (
+            FAST_CONTROL_DOMAIN,
+            FAST_CONTROL_PROFILE,
+            FORMAL_DOMAIN,
+            SUPPORTED_PROFILES,
+        )
 
         if self.physics_profile_id not in SUPPORTED_PROFILES:
             raise FoundationError(
                 E_DOMAIN_INVALID, f"unsupported physics profile {self.physics_profile_id!r}"
             )
+        domain = (
+            FAST_CONTROL_DOMAIN
+            if self.physics_profile_id == FAST_CONTROL_PROFILE
+            else FORMAL_DOMAIN
+        )
+        for name, value in (
+            ("width_m", self.geometry.width_m),
+            ("depth_m", self.geometry.depth_m),
+            ("sidewall_angle_deg", self.geometry.sidewall_angle_deg),
+            ("diameter_m", self.particle.diameter_m),
+            ("wavelength_m", self.source.wavelength_m),
+        ):
+            lower, upper = domain[name]
+            _closed(name, value, lower, upper)
+        if self.physics_profile_id == FAST_CONTROL_PROFILE:
+            bottom = raw_bottom_width(
+                self.geometry.width_m,
+                self.geometry.depth_m,
+                self.geometry.sidewall_angle_deg,
+            )
+            if bottom <= 0.0:
+                raise FoundationError(
+                    E_DOMAIN_INVALID, "scaling-control geometry requires positive bottom width"
+                )
+        else:
+            bottom = dry_etch_bottom_width(
+                self.geometry.width_m,
+                self.geometry.depth_m,
+                self.geometry.sidewall_angle_deg,
+            )
+            if self.source.waist_m < self.source.wavelength_m:
+                raise FoundationError(
+                    E_DOMAIN_INVALID,
+                    "formal dry-etch profile requires beam waist at least one wavelength",
+                )
         if abs(self.position.longitudinal_m) > 2.0 * self.source.waist_m:
             raise FoundationError(
                 E_DOMAIN_INVALID, "particle longitudinal position exceeds 2 waist"
@@ -184,8 +242,6 @@ class SimulationState:
         radius = 0.5 * self.particle.diameter_m
         if 2.0 * radius >= self.geometry.depth_m:
             raise FoundationError(E_DOMAIN_INVALID, "particle does not fit channel depth")
-        angle = math.radians(self.geometry.sidewall_angle_deg)
-        bottom = self.geometry.width_m - 2.0 * self.geometry.depth_m / math.tan(angle)
         z = radius + self.position.depth_fraction * (self.geometry.depth_m - 2.0 * radius)
         local_width = bottom + (self.geometry.width_m - bottom) * (z / self.geometry.depth_m)
         if local_width <= self.particle.diameter_m:
@@ -225,7 +281,7 @@ class SimulationState:
                 environment=EnvironmentState(**dict(value.get("environment", {}))),
                 observation=ObservationOperatorState(**dict(value.get("observation", {}))),
                 physics_profile_id=str(
-                    value.get("physics_profile_id", "FORMAL_FIELD_COUPLING_M1_V2")
+                    value.get("physics_profile_id", "FORMAL_FIELD_COUPLING_M1_V3_DRY_ETCH")
                 ),
             )
         except TypeError as exc:

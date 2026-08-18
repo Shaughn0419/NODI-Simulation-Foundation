@@ -1,4 +1,4 @@
-physics_profile_id: FORMAL_FIELD_COUPLING_M1_V2
+physics_profile_id: FORMAL_FIELD_COUPLING_M1_V3_DRY_ETCH
 geometry:
   width_m: 8.0e-7
   depth_m: 5.5e-7

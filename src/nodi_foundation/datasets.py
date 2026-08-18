@@ -14,14 +14,20 @@ from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
-import pyarrow as pa
-import pyarrow.parquet as pq
+import pyarrow as pa  # type: ignore[import-untyped]
+import pyarrow.parquet as pq  # type: ignore[import-untyped]
 from scipy.stats import qmc  # type: ignore[import-untyped]
 
 from .batch import ExecutionSpec, simulate_batch
 from .capabilities import capabilities
 from .errors import E_DOMAIN_INVALID, FoundationError
-from .models import ENGINE_VERSION, FEATURE_VERSION, SimulationState, StateResult
+from .models import (
+    ENGINE_VERSION,
+    FEATURE_VERSION,
+    SimulationState,
+    StateResult,
+    dry_etch_bottom_width,
+)
 from .profiles import (
     FORMAL_IMPLEMENTATION_SHA256,
     FORMAL_NUMERICAL_PROFILE_SHA256,
@@ -45,7 +51,7 @@ class DatasetSpec:
     profile: str = FORMAL_PROFILE
     feature_catalogue_hash: str | None = None
     qualification_report_hash: str | None = None
-    release_name: str = "NODI-CUSTOM-V2"
+    release_name: str = "NODI-CUSTOM-V3"
     execution: ExecutionSpec = ExecutionSpec()
 
     def __post_init__(self) -> None:
@@ -191,6 +197,8 @@ def _derived_descriptors(inputs: dict[str, Any]) -> dict[str, float]:
     width = float(geometry["width_m"])
     depth = float(geometry["depth_m"])
     diameter = float(particle["diameter_m"])
+    angle = float(geometry["sidewall_angle_deg"])
+    bottom_width = dry_etch_bottom_width(width, depth, angle)
     fill_index = float(environment["fill_refractive_index"])
     relative_index = complex(
         float(particle["refractive_index_real"]),
@@ -206,6 +214,13 @@ def _derived_descriptors(inputs: dict[str, Any]) -> dict[str, float]:
         "derived.H_over_lambda": depth / wavelength,
         "derived.dp_over_lambda": diameter / wavelength,
         "derived.H_over_W": depth / width,
+        "derived.bottom_width_m": bottom_width,
+        "derived.bottom_width_fraction": bottom_width / width,
+        "derived.dry_etch_depth_utilization": (
+            0.0
+            if angle == 90.0
+            else 2.0 * depth / (width * math.tan(math.radians(angle)))
+        ),
         "derived.W_over_w0": width / waist,
         "derived.H_over_w0": depth / waist,
         "derived.mie_size_parameter": math.pi * diameter * fill_index / wavelength,
@@ -240,9 +255,7 @@ def _write_parquet_atomic(path: Path, rows: list[dict[str, Any]]) -> None:
     os.close(handle)
     try:
         table = pa.Table.from_pylist(rows)
-        pq.write_table(  # type: ignore[no-untyped-call]
-            table, temporary, compression="zstd", use_dictionary=True
-        )
+        pq.write_table(table, temporary, compression="zstd", use_dictionary=True)
         os.replace(temporary, path)
     finally:
         if os.path.exists(temporary):
@@ -253,7 +266,7 @@ def _fragment_matches(path: Path, states: tuple[SimulationState, ...]) -> bool:
     if not path.is_file():
         return False
     try:
-        table = pq.read_table(  # type: ignore[no-untyped-call]
+        table = pq.read_table(
             path,
             columns=["state_id", "engine_version", "feature_version"],
         )
@@ -275,23 +288,23 @@ def _consolidate_fragments(paths: list[Path], target: Path) -> None:
     writer: pq.ParquetWriter | None = None
     try:
         for path in paths:
-            table = pq.read_table(path)  # type: ignore[no-untyped-call]
+            table = pq.read_table(path)
             if writer is None:
-                writer = pq.ParquetWriter(  # type: ignore[no-untyped-call]
+                writer = pq.ParquetWriter(
                     temporary,
                     table.schema,
                     compression="zstd",
                     use_dictionary=True,
                 )
-            writer.write_table(table)  # type: ignore[no-untyped-call]
+            writer.write_table(table)
         if writer is None:
             raise RuntimeError("cannot consolidate an empty dataset")
-        writer.close()  # type: ignore[no-untyped-call]
+        writer.close()
         writer = None
         os.replace(temporary, target)
     finally:
         if writer is not None:
-            writer.close()  # type: ignore[no-untyped-call]
+            writer.close()
         if os.path.exists(temporary):
             os.unlink(temporary)
 
@@ -410,7 +423,7 @@ def dataset_spec_from_mapping(value: dict[str, Any], *, output_dir: Path) -> Dat
             if value.get("qualification_report_hash") is None
             else str(value["qualification_report_hash"])
         ),
-        release_name=str(value.get("release_name", "NODI-CUSTOM-V2")),
+        release_name=str(value.get("release_name", "NODI-CUSTOM-V3")),
         execution=execution,
     )
 

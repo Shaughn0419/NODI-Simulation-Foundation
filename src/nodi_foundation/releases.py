@@ -161,7 +161,10 @@ def validate_release(path: str | Path) -> ValidationReport:
         "NODI_EVALUATION_INPUT_RELEASE",
         "NODI_SEALED_LABEL_RELEASE",
     }
-    if manifest.get("engine_version") == "2.0.0" and release_type in profile_bound_release_types:
+    if (
+        manifest.get("engine_version") == ENGINE_VERSION
+        and release_type in profile_bound_release_types
+    ):
         if not isinstance(metadata, dict):
             errors.append("E_RELEASE_PROFILE_METADATA_MISSING")
         else:
@@ -189,10 +192,10 @@ def validate_release(path: str | Path) -> ValidationReport:
                 and isinstance(files[0].get("path"), str)
             ):
                 try:
-                    import pyarrow as pa
-                    import pyarrow.parquet as pq
+                    import pyarrow as pa  # type: ignore[import-untyped]
+                    import pyarrow.parquet as pq  # type: ignore[import-untyped]
 
-                    table = pq.read_table(  # type: ignore[no-untyped-call]
+                    table = pq.read_table(
                         directory / files[0]["path"], columns=["physics_profile_id"]
                     )
                     row_profiles = set(table["physics_profile_id"].to_pylist())

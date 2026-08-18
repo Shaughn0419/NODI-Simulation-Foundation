@@ -8,12 +8,14 @@ import pytest
 
 from nodi_foundation import (
     EnvironmentState,
+    GeometryState,
     ParticleState,
     SimulationState,
     derive_observation,
     simulate_state,
 )
 from nodi_foundation.errors import FoundationError
+from nodi_foundation.models import dry_etch_bottom_width
 from nodi_foundation.profiles import FAST_CONTROL_PROFILE, FORMAL_PROFILE
 
 
@@ -97,4 +99,34 @@ def test_invalid_geometry_and_na_fail_closed() -> None:
         SimulationState(
             environment=EnvironmentState(fill_refractive_index=1.33, wall_refractive_index=1.40),
             observation=SimulationState().observation.__class__(collection_na=1.40),
+        )
+
+
+def test_dry_etch_zero_bottom_is_terminal_and_negative_bottom_is_rejected() -> None:
+    width = 1.0e-6
+    angle = 70.0
+    apex_depth = 0.5 * width * math.tan(math.radians(angle))
+    apex = SimulationState(geometry=GeometryState(width, apex_depth, angle))
+    assert dry_etch_bottom_width(width, apex_depth, angle) == 0.0
+    assert simulate_state(apex).numerical_status == "FORMAL_FIELD_FINITE"
+
+    with pytest.raises(FoundationError, match="negative bottom width"):
+        SimulationState(
+            geometry=GeometryState(width, apex_depth * (1.0 + 1.0e-8), angle)
+        )
+
+
+def test_profile_specific_ranges_and_coupled_particle_fit_fail_closed() -> None:
+    expanded = SimulationState(
+        geometry=GeometryState(2.0e-6, 2.0e-6, 70.0),
+        particle=ParticleState(diameter_m=2.0e-7),
+        source=replace(SimulationState().source, wavelength_m=9.0e-7),
+    )
+    assert expanded.physics_profile_id == FORMAL_PROFILE
+    with pytest.raises(FoundationError, match="depth_m must be"):
+        replace(expanded, physics_profile_id=FAST_CONTROL_PROFILE)
+    with pytest.raises(FoundationError, match="particle does not fit channel depth"):
+        SimulationState(
+            geometry=GeometryState(2.0e-7, 2.0e-7, 90.0),
+            particle=ParticleState(diameter_m=2.0e-7),
         )

@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nodi-foundation"
-version = "2.0.0"
-description = "Standalone formal field-coupling simulation and immutable datasets for NODI research."
+version = "3.0.0"
+description = "Standalone dry-etch formal field-coupling simulation and immutable datasets for NODI research."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 authors = [{name = "Shaughn0419"}]
@@ -41,7 +41,7 @@ packages = ["src/nodi_foundation"]
 "schemas" = "nodi_foundation/schemas"
 "examples" = "nodi_foundation/examples"
 "configs/profiles" = "nodi_foundation/profiles"
-"formal_m1_v2_qualification_report.json" = "nodi_foundation/qualification/formal_m1_v2_qualification_report.json"
+"formal_m1_v3_dry_etch_qualification_report.json" = "nodi_foundation/qualification/formal_m1_v3_dry_etch_qualification_report.json"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,19 +1,25 @@
-schema_version: 2
-feature_version: '2.0'
-claim_ceiling: FIRST_ORDER_FORMAL_FIELD_COUPLING_M1_WITH_DECLARED_LIMITS
+schema_version: 3
+feature_version: '3.0'
+claim_ceiling: FIRST_ORDER_FORMAL_FIELD_COUPLING_M1_IDEALIZED_DRY_ETCH_WITH_DECLARED_LIMITS
+coupled_constraints:
+  - dry_etch_bottom_width_m = width_m - 2 * depth_m / tan(sidewall_angle_deg) >= 0
+  - particle_diameter_m < depth_m
+  - particle_diameter_m < local_channel_width_m(position)
+  - beam_waist_m >= wavelength_m
+material_index_semantics: EACH_COMPLEX_INDEX_IS_EVALUATED_AT_STATE_WAVELENGTH
 features:
-  - {id: channel_width, path: geometry.width_m, unit: m, domain: [2.2e-7, 2.1e-6], formal_status: FORMAL_DIRECT, role: GEOMETRY}
-  - {id: channel_depth, path: geometry.depth_m, unit: m, domain: [6.0e-8, 1.4e-6], formal_status: FORMAL_DIRECT, role: PHASE}
-  - {id: sidewall_angle, path: geometry.sidewall_angle_deg, unit: deg, domain: [80.0, 90.0], formal_status: FORMAL_WITH_LIMITS, role: GEOMETRY}
+  - {id: channel_width, path: geometry.width_m, unit: m, domain: [2.0e-7, 2.0e-6], formal_status: FORMAL_WITH_LIMITS, role: GEOMETRY}
+  - {id: channel_depth, path: geometry.depth_m, unit: m, domain: [2.0e-7, 2.0e-6], formal_status: FORMAL_WITH_LIMITS, role: PHASE}
+  - {id: sidewall_angle, path: geometry.sidewall_angle_deg, unit: deg, domain: [70.0, 90.0], formal_status: FORMAL_WITH_LIMITS, role: GEOMETRY}
   - {id: beam_offset_longitudinal, path: source.beam_offset_longitudinal_m, unit: m, domain: [-1.5e-6, 1.5e-6], formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}
   - {id: beam_offset_lateral, path: source.beam_offset_lateral_m, unit: m, domain: [-1.5e-6, 1.5e-6], formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}
-  - {id: particle_diameter, path: particle.diameter_m, unit: m, domain: [2.0e-8, 1.6e-7], formal_status: FORMAL_DIRECT, role: AMPLITUDE}
+  - {id: particle_diameter, path: particle.diameter_m, unit: m, domain: [2.0e-8, 2.0e-7], formal_status: FORMAL_WITH_LIMITS, role: AMPLITUDE}
   - {id: particle_n_real, path: particle.refractive_index_real, unit: '1', domain: [1.34, 2.0], formal_status: FORMAL_DIRECT, role: PHASE_CONTRAST}
   - {id: particle_n_imag, path: particle.refractive_index_imag, unit: '1', domain: [0.0, 0.2], formal_status: FORMAL_DIRECT, role: PHASE}
   - {id: particle_longitudinal, path: position.longitudinal_m, unit: m, domain: [-2.0e-6, 2.0e-6], formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}
   - {id: particle_lateral, path: position.lateral_fraction, unit: '1', domain: [-1.0, 1.0], formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}
   - {id: particle_depth, path: position.depth_fraction, unit: '1', domain: [0.05, 0.95], formal_status: FORMAL_DIRECT, role: PHASE}
-  - {id: wavelength, path: source.wavelength_m, unit: m, domain: [4.0e-7, 7.0e-7], formal_status: FORMAL_DIRECT, role: PHASE}
+  - {id: wavelength, path: source.wavelength_m, unit: m, domain: [4.0e-7, 9.0e-7], formal_status: FORMAL_WITH_LIMITS, role: PHASE}
   - {id: beam_waist, path: source.waist_m, unit: m, domain: [5.0e-7, 2.0e-6], formal_status: FORMAL_DIRECT, role: AMPLITUDE}
   - {id: incident_power, path: source.incident_power_W, unit: W, domain: [0.25, 4.0], formal_status: FORMAL_DIRECT, role: ABSOLUTE_POWER}
   - {id: source_polarization_azimuth, path: source.polarization_azimuth_rad, unit: rad, domain: [0.0, 3.141592653589793], formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}

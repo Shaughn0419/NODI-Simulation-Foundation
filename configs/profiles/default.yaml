@@ -1,7 +1,7 @@
-profile_id: FORMAL_FIELD_COUPLING_M1_V2
-engine: FORMAL_FIELD_COUPLING_M1_V2
-schema_version: '2.0'
-feature_version: '2.0'
+profile_id: FORMAL_FIELD_COUPLING_M1_V3_DRY_ETCH
+engine: FORMAL_FIELD_COUPLING_M1_V3_DRY_ETCH
+schema_version: '3.0'
+feature_version: '3.0'
 units: SI
 invalid_state_policy: REJECT
 incident_power_semantics: ABSOLUTE_GAUSSIAN_BEAM_POWER_W

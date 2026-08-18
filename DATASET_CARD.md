@@ -1,121 +1,79 @@
-# NODI Foundation reference datasets
+# NODI Foundation v3 dataset card
 
 ## Summary
 
-These immutable releases contain deterministic outputs from NODI Simulation
-Foundation 1.0.0. Their embedded historical profile identifier is
-`M1_ANALYTICAL_SYNTHETIC_V1`; the binding current classification is
-`FAST_SCALING_CONTROL_V1`, with fidelity `SCALING_CONTROL_ONLY`, scientific role
-`SOFTWARE_AND_PIPELINE_CONTROL`, and `paper2_final_truth_eligible=false`.
-They support software integration and control-route regression. They do not
-contain Paper 2 final truth, experimental, COMSOL, fabrication, mobility,
-clogging, yield, or calibrated detector evidence.
+The current releases are deterministic outputs of NODI Simulation Foundation
+3.0.0 using `FORMAL_FIELD_COUPLING_M1_V3_DRY_ETCH`. They are eligible as
+first-order formal-M1 reference data only within the declared idealized
+dry-etch limits. They are not full-wave, COMSOL, experimental, fabrication,
+mobility, clogging, yield, calibrated-detection, event-time, or unrestricted
+physical truth.
 
-## Provenance and composition
+## Domain and geometry
 
-- Physics lineage: the canonical Paper 1 analytical M1 specification at commit
-  `bb27a3ac882344e4ef26663102cd6c0a6882b675`, reimplemented without source
-  copying or runtime imports.
-- Engine/schema/feature versions: `1.0.0 / 1.0 / 1.0`.
-- Sampling: deterministic scrambled Sobol states with explicit fixed seeds;
-  invalid coupled states are rejected, never clipped.
-- Primitive universe: 26 SI-unit state fields.
-- Derived descriptors: 20 dimensionless geometry, optical, position, pupil,
-  and Stokes descriptors; they are not independent degrees of freedom.
+Nominal bounds are width 0.2-2.0 um, depth 0.2-2.0 um, sidewall angle 70-90
+degrees, particle diameter 20-200 nm, and wavelength 400-900 nm. Width is the
+top width and the angle is measured from the substrate plane. The ideal bottom
+width is `W - 2 H / tan(alpha)`. Zero is a legal closed apex; negative values
+are rejected rather than clipped.
+
+The valid data domain is coupled: particles must fit the depth and their local
+channel width, and the beam waist must be at least the wavelength. Each
+refractive index is interpreted at the row's wavelength. No automatic material
+dispersion database, corner rounding, surface roughness, or etch-process model
+is supplied.
+
+## Provenance and qualification
+
+- Engine/schema/feature versions: `3.0.0 / 3.0 / 3.0`.
+- Physics profile: `FORMAL_FIELD_COUPLING_M1_V3_DRY_ETCH`.
+- Sampling: deterministic scrambled Sobol reference blocks with invalid coupled
+  states rejected.
+- Qualification report SHA-256:
+  `adc804dc447a6688dcd2943e3e43fe5c3aea71b8fdf40f9c64caabcfd225e20a`.
+- Feature catalogue SHA-256:
+  `782deded565d28ee70a1250b87f13c526089f2ff38dd8abd47d6512ab9a67f17`.
 - Outputs: `B_bg_W`, `S_W`, `C_r_W`, `C_i_W`, `Y_0_W`, overlap metadata,
-  applicability/qualification fields, and canonical state/result identities.
+  factorized block IDs, numerical receipts, applicability, and canonical IDs.
+- Derived descriptors: 23, including bottom width, bottom-width fraction, and
+  dry-etch depth utilization.
 
-The v1 products are a 4,096-row Quickstart subset, a 524,288-row Development
-atlas, 16,384 Development intervention pairs, 65,536 fresh Evaluation inputs
-with 2,048 marked anchors, and a separately held 65,536-row label commitment.
-Exact release IDs, byte hashes, sizes, and local paths are recorded in
-`n3_release_manifest.json`.
+The 384-state qualification panel passed and includes eight exact apex cases.
+Production uses a 32x64 vector pupil and order-96 reference quadrature, checked
+against 40x80 and order 128.
 
-The original manifests and tables are not rewritten. The owner correction is
-an additive, content-bound overlay in `v1_control_reclassification.json`; it
-binds the v1 tag, commit, manifest hashes, and every release ID.
+## Composition
 
-## Capability freeze
+- Capability sprint: 32,768 states.
+- Quickstart: 4,096 rows selected from the capability sprint without recompute.
+- Development: 524,288 unique states.
+- Development interventions: 16,384 pairs, split equally between
+  `particle_longitudinal` and `particle_diameter`.
+- Evaluation: 65,536 unique inputs with 2,048 intervention anchors.
+- Evaluation labels: a separately held, exactly aligned 65,536-row commitment.
 
-One 32,768-state sprint retained all 26 primitives after legal one-axis effect
-checks. `channel_width` is the primary exposure family and `particle_depth` is
-the replication family from a different predeclared mechanism group. The
-selection does not use downstream model errors. No second feature campaign or
-Development-size doubling is permitted for v1. The selected families are v1
-controls only and must not be imported into the v2 formal identity or used to
-select Paper 2 final features.
+The full content IDs, file hashes, sizes, formal bindings, and acceptance
+results are in [`v3_release_manifest.json`](v3_release_manifest.json).
 
-## Splits and leakage controls
+## Split and leakage controls
 
-- Quickstart is selected by lexicographic `state_id` from the capability
-  release and adds no new calculation.
-- Development and Evaluation use different fixed seeds and have zero shared
-  state IDs.
-- Evaluation input and label state IDs are identical and in the same order.
-- Labels are content-addressed in a separate `.sealed` owner-custody release;
-  sealing denotes controlled separation and commitment, not encryption.
-- The label release is not delivered to downstream analysis before the
-  applicable prediction freeze.
-
-## Validation
-
-Every release has a canonical manifest containing its release ID, logical
-metadata, primary-file size, and SHA-256. `validate_release(path)` detects
-manifest, size, path, or content drift. The v1 acceptance checks confirm all
-row counts, Development/Evaluation disjointness, Quickstart subset identity,
-input/label alignment, intervention allocation, and `1.0.0 / 1.0` identities.
+- Development and Evaluation have zero shared state IDs.
+- Evaluation inputs and labels have identical state IDs in identical order.
+- Labels are content-addressed in an owner-custody `.sealed` release; sealing is
+  controlled separation and commitment, not encryption.
+- Labels remain `SEALED_NOT_DELIVERED` until the applicable prediction freeze.
+- Release validation rejects mixed profiles, stale qualification hashes, unsafe
+  paths, size drift, and content drift.
 
 ## Intended and prohibited uses
 
-Appropriate uses include API/CLI integration, deterministic examples, scaling
-controls, and testing immutable data-release consumers. Do not import the v1
-Development, Evaluation, sealed labels, interventions, or selected exposure
-families as Paper 2 final data. Do not treat these data as scientific truth,
-formal-field domain validation, experimental truth, full-wave validation,
-material calibration, clinical evidence, fabrication feasibility, production
-yield, or authority to rank real devices.
+Appropriate uses are formal-M1 reference modelling, API/CLI integration,
+deterministic regression, bounded feature studies, and downstream experiments
+whose claims stay below the profile ceiling. Do not treat the data as evidence
+for fabrication feasibility, experimental performance, full-wave agreement,
+calibrated detection, mobility, clogging, yield, or real-device ranking.
 
-## Access, license, and citation
-
-Large data files are intentionally not stored in Git. Access is controlled by
-the Foundation owner; the sealed label artifact has a stricter owner-only
-delivery state. Code and data reuse are governed by `LICENSE`. Cite the
-software using `CITATION.cff` and include the exact dataset release ID used.
-
-## v2 formal release boundary
-
-`FORMAL_FIELD_COUPLING_M1_V2` passed its single 384-state qualification panel
-and 4,096-state nested performance pilot with disposition `PASS_WITH_LIMITS`.
-The binding report is `formal_m1_v2_qualification_report.json`, file SHA-256
-`1b2059100a3d18260ca3e4c65f9ee9a72095e062063910a3a3651bd92f1b94f3`.
-Formal releases must bind that exact report, physics implementation, feature
-catalogue, qualification matrix, and parity panel; release validation rejects
-missing/mixed profile rows. The fresh 32,768-state formal sprint independently
-retained all 26 primitives and froze `particle_longitudinal` as primary and
-`pupil_inner_radius` as the different-mechanism replication exposure. Its
-release IDs and exact file hashes are recorded in `v2_release_manifest.json`;
-v1 feature selections were not imported.
-
-## v2 composition and split controls
-
-The v2 release set contains a 32,768-state capability sprint, a 4,096-row
-no-recompute Quickstart subset, 524,288 unique Development states, 16,384
-Development intervention pairs, 65,536 fresh Evaluation inputs with 2,048
-marked anchors, and a separately held 65,536-row label commitment. The
-intervention allocation is fixed at 8,192 pairs for `particle_longitudinal` and
-8,192 for `pupil_inner_radius`.
-
-Every scientific row has profile `FORMAL_FIELD_COUPLING_M1_V2` and binds the
-exact R2 qualification report plus the physics, numerical-profile, capability,
-qualification-matrix, and parity-panel hashes. Quickstart state IDs are a subset
-of the capability sprint; Development and Evaluation each contain no duplicate
-state IDs and share zero IDs; Evaluation inputs and labels are identical in ID
-and order. `validate_release` checks content hashes, formal binding, and row
-profile for every delivered table. Exact release IDs and file SHA-256 values are
-in `v2_release_manifest.json`.
-
-The v2 products are eligible formal first-order M1 references with declared
-limits. They do not establish full-wave, COMSOL, experimental, material,
-fabrication, mobility, clogging, yield, calibrated-detection, event-time, or
-unrestricted physical-truth claims. The sealed labels remain owner-only and are
-not delivered before the applicable prediction freeze.
+Only v3 is retained in the active release root. Earlier products are not mixed
+with current data and are recoverable only from their immutable Git tags or
+GitHub releases. Code and data reuse are governed by `LICENSE`; cite the
+software and the exact release ID consumed.

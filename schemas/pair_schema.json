@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Shaughn0419/NODI-Simulation-Foundation/schemas/pair_schema.json",
-  "title": "NODI Foundation one-axis intervention pair v2",
+  "title": "NODI Foundation one-axis intervention pair v3 dry-etch",
   "type": "object",
   "additionalProperties": false,
   "required": ["pair_id", "physics_profile_id", "anchor_state_id", "feature", "low_state_id", "high_state_id", "delta_S_W", "delta_C_r_W", "delta_C_i_W", "delta_Y_0_W"],
   "properties": {
     "pair_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-    "physics_profile_id": {"enum": ["FORMAL_FIELD_COUPLING_M1_V2", "FAST_SCALING_CONTROL_V1"]},
+    "physics_profile_id": {"enum": ["FORMAL_FIELD_COUPLING_M1_V3_DRY_ETCH", "FAST_SCALING_CONTROL_V1"]},
     "anchor_state_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "feature": {"type": "string"},
     "low_value": {"type": "number"},

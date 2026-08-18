@@ -1,12 +1,17 @@
-release_name: NODI-QUICK-CONTROL-V1
-profile: FAST_SCALING_CONTROL_V1
+release_name: NODI-QUICK-DRY-ETCH-V3
+profile: FORMAL_FIELD_COUPLING_M1_V3_DRY_ETCH
 state_count: 64
 sampling_method: sobol
 seed: 20260818
+feature_catalogue_hash: 782deded565d28ee70a1250b87f13c526089f2ff38dd8abd47d6512ab9a67f17
+qualification_report_hash: adc804dc447a6688dcd2943e3e43fe5c3aea71b8fdf40f9c64caabcfd225e20a
 feature_ranges:
-  particle_diameter: [4.0e-8, 1.2e-7]
+  channel_width: [8.0e-7, 1.6e-6]
+  channel_depth: [3.0e-7, 8.0e-7]
+  sidewall_angle: [80.0, 90.0]
+  particle_diameter: [2.0e-8, 2.0e-7]
   particle_lateral: [-0.8, 0.8]
-  wavelength: [5.5e-7, 7.0e-7]
+  wavelength: [4.0e-7, 9.0e-7]
 execution:
   workers: 4
   chunk_size: 32

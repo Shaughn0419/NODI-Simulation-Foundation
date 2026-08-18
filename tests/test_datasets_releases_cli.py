@@ -23,6 +23,7 @@ from nodi_foundation.errors import FoundationError
 from nodi_foundation.models import canonical_json, canonical_sha256
 from nodi_foundation.profiles import (
     FAST_CONTROL_PROFILE,
+    FORMAL_PROFILE,
     FORMAL_QUALIFICATION_REPORT_SHA256,
 )
 
@@ -58,7 +59,7 @@ def test_dataset_release_is_deterministic_and_valid(tmp_path) -> None:
     table = pq.read_table(first.path / "data.parquet")
     assert table.num_rows == 16
     assert {"state_id", "S_W", "C_r_W", "C_i_W"} <= set(table.column_names)
-    assert len([name for name in table.column_names if name.startswith("derived.")]) == 20
+    assert len([name for name in table.column_names if name.startswith("derived.")]) == 23
 
 
 def test_pair_release_matches_schema(tmp_path) -> None:
@@ -106,7 +107,7 @@ def test_formal_release_requires_and_preserves_qualification_binding(tmp_path) -
     )
     assert validate_release(release.path).valid
     table = pq.read_table(release.path / "data.parquet", columns=["physics_profile_id"])
-    assert set(table["physics_profile_id"].to_pylist()) == {"FORMAL_FIELD_COUPLING_M1_V2"}
+    assert set(table["physics_profile_id"].to_pylist()) == {FORMAL_PROFILE}
 
     manifest_path = release.path / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -122,7 +123,7 @@ def test_formal_release_requires_and_preserves_qualification_binding(tmp_path) -
 
 def test_cli_info_capabilities_simulate_and_dataset(tmp_path, capsys) -> None:
     assert main(["info"]) == 0
-    assert json.loads(capsys.readouterr().out)["package_version"] == "2.0.0"
+    assert json.loads(capsys.readouterr().out)["package_version"] == "3.0.0"
     assert main(["capabilities"]) == 0
     assert json.loads(capsys.readouterr().out)["feature_count"] == 26
 

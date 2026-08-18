@@ -21,14 +21,19 @@ from scipy.constants import c, epsilon_0  # type: ignore[import-untyped]
 from scipy.special import spherical_jn, spherical_yn  # type: ignore[import-untyped]
 
 from nodi_foundation.errors import E_DOMAIN_INVALID, E_NUMERICAL_NONFINITE, FoundationError
-from nodi_foundation.models import SimulationState, canonical_sha256
+from nodi_foundation.models import (
+    SimulationState,
+    canonical_sha256,
+    dry_etch_bottom_width,
+)
+from nodi_foundation.profiles import FORMAL_PROFILE
 
 FloatArray = NDArray[np.float64]
 ComplexArray = NDArray[np.complex128]
 
 
 def _configuration() -> tuple[dict[str, Any], str]:
-    resource = files("nodi_foundation.data").joinpath("formal_m1_v2.json")
+    resource = files("nodi_foundation.data").joinpath("formal_m1_v3_dry_etch.json")
     raw = resource.read_bytes()
     document = json.loads(raw)
     return document, hashlib.sha256(raw).hexdigest()
@@ -120,7 +125,7 @@ def _pupil_grid(
         _freeze(item)
     grid_id = canonical_sha256(
         {
-            "profile": "FORMAL_FIELD_COUPLING_M1_V2",
+            "profile": FORMAL_PROFILE,
             "collection_na": collection_na,
             "inner": inner,
             "outer": outer,
@@ -134,12 +139,13 @@ def _pupil_grid(
 
 
 def _trapezoid_path(width: float, depth: float, angle_deg: float, u: FloatArray) -> FloatArray:
-    if angle_deg == 90.0:
-        return np.where(np.abs(u) <= 0.5 * width, depth, 0.0).astype(np.float64)
-    tangent = math.tan(math.radians(angle_deg))
+    bottom_width = dry_etch_bottom_width(width, depth, angle_deg)
     top_half = 0.5 * width
-    bottom_half = top_half - depth / tangent
+    bottom_half = 0.5 * bottom_width
     absolute = np.abs(u)
+    if angle_deg == 90.0:
+        return np.where(absolute <= top_half, depth, 0.0).astype(np.float64)
+    tangent = math.tan(math.radians(angle_deg))
     path = np.where(
         absolute <= bottom_half,
         depth,
@@ -160,10 +166,10 @@ def _reference_scalar(
     offset_u: float,
     fill_index: float,
     wall_index: float,
+    reference_order: int,
     grid: PupilGrid,
 ) -> ComplexArray:
-    order = int(NUMERICS["reference_gauss_order_per_axis"])
-    nodes, weights = np.polynomial.legendre.leggauss(order)
+    nodes, weights = np.polynomial.legendre.leggauss(reference_order)
     half_length = 0.5 * float(CONFIG["physics"]["channel_length_waist_radii"]) * waist
     s = half_length * nodes
     ws = half_length * weights
@@ -312,8 +318,9 @@ def _mie_solution(
 def _particle_coordinates(state: SimulationState) -> tuple[float, float, float]:
     radius = 0.5 * state.particle.diameter_m
     geometry = state.geometry
-    tangent = math.tan(math.radians(geometry.sidewall_angle_deg))
-    bottom = geometry.width_m - 2.0 * geometry.depth_m / tangent
+    bottom = dry_etch_bottom_width(
+        geometry.width_m, geometry.depth_m, geometry.sidewall_angle_deg
+    )
     z = radius + state.position.depth_fraction * (geometry.depth_m - 2.0 * radius)
     local_width = bottom + (geometry.width_m - bottom) * z / geometry.depth_m
     support = 0.5 * local_width - radius
@@ -346,7 +353,7 @@ def _analyzer_weight(state: SimulationState) -> ComplexArray:
 
 @lru_cache(maxsize=8192)
 def _fields(
-    state: SimulationState, grid: PupilGrid
+    state: SimulationState, grid: PupilGrid, reference_order: int
 ) -> tuple[ComplexArray, ComplexArray, MieSolution]:
     source = state.source
     environment = state.environment
@@ -361,6 +368,7 @@ def _fields(
         source.beam_offset_lateral_m,
         environment.fill_refractive_index,
         environment.wall_refractive_index,
+        reference_order,
         grid,
     )
     node_count = grid.theta.size
@@ -435,7 +443,9 @@ def _gram(
     return np.asarray(np.einsum("mna,kna->mk", left.conj(), weighted, optimize=True))
 
 
-def _block_ids(state: SimulationState, grid: PupilGrid) -> tuple[str, str, str, str]:
+def _block_ids(
+    state: SimulationState, grid: PupilGrid, reference_order: int
+) -> tuple[str, str, str, str]:
     payload = state.to_payload()
     reference = canonical_sha256(
         {
@@ -451,6 +461,7 @@ def _block_ids(state: SimulationState, grid: PupilGrid) -> tuple[str, str, str, 
                 )
             },
             "environment": payload["environment"],
+            "reference_gauss_order": reference_order,
             "grid_id": grid.grid_id,
         }
     )
@@ -492,6 +503,7 @@ def _block_ids(state: SimulationState, grid: PupilGrid) -> tuple[str, str, str, 
 def _evaluate_formal_cached(
     state: SimulationState,
     pupil_order: tuple[int, int],
+    reference_order: int,
 ) -> FormalPrimitives:
     radial, azimuthal = pupil_order
     grid = _pupil_grid(
@@ -517,7 +529,7 @@ def _evaluate_formal_cached(
             analyzer_ellipticity_rad=0.0,
         ),
     )
-    reference, particle, mie = _fields(field_state, grid)
+    reference, particle, mie = _fields(field_state, grid, reference_order)
     gamma = _source_covariance(state)
     analyzer = _analyzer_weight(state)
     rr = complex(np.trace(gamma @ _gram(reference, reference, grid.weights_sr, analyzer)))
@@ -529,13 +541,15 @@ def _evaluate_formal_cached(
     values = (rr.real, ss.real, cc.real, cc.imag)
     if not all(math.isfinite(value) for value in values):
         raise FoundationError(E_NUMERICAL_NONFINITE, "formal field coupling is nonfinite")
-    reference_id, particle_id, position_id, operator_id = _block_ids(state, grid)
+    reference_id, particle_id, position_id, operator_id = _block_ids(
+        state, grid, reference_order
+    )
     receipts = (
         canonical_sha256(
             {
                 "numerical_profile_hash": CONFIG_HASH,
                 "pupil_grid_id": grid.grid_id,
-                "reference_gauss_order": NUMERICS["reference_gauss_order_per_axis"],
+                "reference_gauss_order": reference_order,
             }
         ),
         mie.receipt_id,
@@ -582,11 +596,17 @@ def evaluate_formal_m1(
     state: SimulationState,
     *,
     pupil_order: tuple[int, int] | None = None,
+    reference_order: int | None = None,
 ) -> FormalPrimitives:
     """Evaluate the formal first-order M1 field chain for one validated state."""
 
     order = pupil_order or tuple(NUMERICS["production_pupil_order"])
-    return _evaluate_formal_cached(state, (int(order[0]), int(order[1])))
+    reference = reference_order or int(
+        NUMERICS["production_reference_gauss_order_per_axis"]
+    )
+    return _evaluate_formal_cached(
+        state, (int(order[0]), int(order[1])), int(reference)
+    )
 
 
 def _cache_payload(info: object) -> dict[str, int | None]:
