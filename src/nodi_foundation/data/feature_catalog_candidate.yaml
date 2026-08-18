@@ -1,14 +1,15 @@
-schema_version: 4
-feature_version: '4.0'
-claim_ceiling: FIRST_ORDER_FORMAL_FIELD_COUPLING_M1_IDEALIZED_DRY_ETCH_WITH_DECLARED_LIMITS
+schema_version: 5
+feature_version: '5.0'
+claim_ceiling: FIRST_ORDER_FORMAL_FIELD_COUPLING_M1_EXACT_DRY_ETCH_SUPPORT_WITH_DECLARED_LIMITS
 coupled_constraints:
   - dry_etch_bottom_width_m = width_m - 2 * depth_m / tan(sidewall_angle_deg) >= 0
-  - particle_diameter_m + 2 * effective_wall_exclusion_m < depth_m
-  - particle_diameter_m + 2 * effective_wall_exclusion_m < local_channel_width_m(position)
+  - exact_wall_normal_erosion(cross_section, particle_diameter_m / 2 + effective_wall_exclusion_m) has positive area
   - beam_waist_m >= wavelength_m
   - collection_na < fill_refractive_index
 normalization_power_semantics: LINEAR_REFERENCE_NORMALIZATION_NOT_EXPERIMENTAL_EXPOSURE_DOSE
-material_index_semantics: EACH_COMPLEX_INDEX_IS_EVALUATED_AT_STATE_WAVELENGTH
+material_index_semantics: PARTICLE_COMPLEX_AND_FILL_WALL_REAL_INDICES_APPLY_AT_STATE_WAVELENGTH
+position_semantics: DEPTH_AND_LATERAL_FRACTIONS_MAP_BIJECTIVELY_INSIDE_EXACT_ERODED_SUPPORT
+analyzer_semantics: PASSIVE_IDEAL_RANK_ONE_PROJECTOR_TRACE_ONE
 features:
   - {id: channel_width, path: geometry.width_m, unit: m, domain: [2.0e-7, 2.0e-6], formal_status: FORMAL_WITH_LIMITS, role: GEOMETRY}
   - {id: channel_depth, path: geometry.depth_m, unit: m, domain: [2.0e-7, 2.0e-6], formal_status: FORMAL_WITH_LIMITS, role: PHASE}
@@ -16,7 +17,7 @@ features:
   - {id: beam_offset_longitudinal_over_w0, path: source.beam_offset_longitudinal_over_w0, unit: '1', domain: [-1.5, 1.5], reference_release_domain: [-0.8, 0.8], formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}
   - {id: beam_offset_lateral_over_w0, path: source.beam_offset_lateral_over_w0, unit: '1', domain: [-1.5, 1.5], reference_release_domain: [-0.8, 0.8], formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}
   - {id: particle_diameter, path: particle.diameter_m, unit: m, domain: [2.0e-8, 2.0e-7], formal_status: FORMAL_WITH_LIMITS, role: AMPLITUDE}
-  - {id: particle_n_real, path: particle.refractive_index_real, unit: '1', domain: [1.34, 2.0], formal_status: FORMAL_DIRECT, role: PHASE_CONTRAST}
+  - {id: particle_n_real, path: particle.refractive_index_real, unit: '1', domain: [1.30, 2.0], reference_release_domain: [1.34, 2.0], formal_status: FORMAL_DIRECT, role: PHASE_CONTRAST}
   - {id: particle_n_imag, path: particle.refractive_index_imag, unit: '1', domain: [0.0, 0.2], formal_status: FORMAL_DIRECT, role: PHASE}
   - {id: particle_longitudinal_over_w0, path: position.longitudinal_over_w0, unit: '1', domain: [-2.0, 2.0], formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}
   - {id: particle_lateral, path: position.lateral_fraction, unit: '1', domain: [-1.0, 1.0], formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}
@@ -29,7 +30,7 @@ features:
   - {id: degree_of_polarization, path: source.degree_of_polarization, unit: '1', domain: [0.0, 1.0], formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}
   - {id: fill_refractive_index, path: environment.fill_refractive_index, unit: '1', domain: [1.30, 1.40], formal_status: FORMAL_WITH_LIMITS, role: PHASE_CONTRAST}
   - {id: wall_refractive_index, path: environment.wall_refractive_index, unit: '1', domain: [1.40, 1.55], formal_status: FORMAL_WITH_LIMITS, role: PHASE_CONTRAST}
-  - {id: effective_wall_exclusion, path: environment.effective_wall_exclusion_m, unit: m, domain: [0.0, 2.0e-8], reference_release_domain: [2.0e-9, 2.0e-8], formal_status: FORMAL_WITH_LIMITS, calibration_required: true, role: GEOMETRY}
+  - {id: effective_wall_exclusion, path: environment.effective_wall_exclusion_m, unit: m, domain: [0.0, 2.0e-8], formal_status: FORMAL_WITH_LIMITS, calibration_required: true, role: GEOMETRY}
   - {id: collection_na, path: observation.collection_na, unit: '1', domain: [0.40, 1.20], formal_status: FORMAL_WITH_LIMITS, role: EXPOSURE_CONTROL}
   - {id: analyzer_azimuth, path: observation.analyzer_azimuth_rad, unit: rad, domain: [0.0, 3.141592653589793], upper_endpoint: EXCLUSIVE_CANONICALIZED_TO_ZERO, formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}
   - {id: analyzer_ellipticity, path: observation.analyzer_ellipticity_rad, unit: rad, domain: [-0.7853981633974483, 0.7853981633974483], formal_status: FORMAL_DIRECT, role: EXPOSURE_CONTROL}

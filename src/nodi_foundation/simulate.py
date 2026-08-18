@@ -41,6 +41,8 @@ def simulate_state(state_spec: SimulationState | Mapping[str, Any]) -> StateResu
         "physics_profile_id": state.physics_profile_id,
         "fidelity_class": FAST_FIDELITY if is_control else FORMAL_FIDELITY,
         "claim_ceiling": FAST_CLAIM_CEILING if is_control else FORMAL_CLAIM_CEILING,
+        "reference_design_id": state.reference_design_id,
+        "split_group_id": state.split_group_id,
         "reference_block_id": primitive.reference_block_id,
         "particle_block_id": primitive.particle_block_id,
         "position_block_id": primitive.position_block_id,
@@ -56,6 +58,8 @@ def simulate_state(state_spec: SimulationState | Mapping[str, Any]) -> StateResu
         "eta_imag": primitive.eta_imag,
         "eta_abs": primitive.eta_abs,
         "C_phase_rad": primitive.C_phase_rad,
+        "coupling_defined": primitive.coupling_defined,
+        "coupling_undefined_reason": primitive.coupling_undefined_reason,
         "numerical_status": "SCALING_CONTROL_FINITE" if is_control else "FORMAL_FIELD_FINITE",
         "uncertainty": {
             "numerical": (

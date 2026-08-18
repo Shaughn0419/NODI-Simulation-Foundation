@@ -16,9 +16,9 @@ from .errors import (
     FoundationError,
 )
 
-SCHEMA_VERSION = "4.0"
-ENGINE_VERSION = "4.0.0"
-FEATURE_VERSION = "4.0"
+SCHEMA_VERSION = "5.0"
+ENGINE_VERSION = "5.0.0"
+FEATURE_VERSION = "5.0"
 
 BOTTOM_WIDTH_RELATIVE_TOLERANCE = 1.0e-12
 
@@ -81,6 +81,131 @@ def dry_etch_bottom_width(width_m: float, depth_m: float, sidewall_angle_deg: fl
     if raw < -tolerance:
         raise FoundationError(E_DOMAIN_INVALID, "dry-etch sidewalls produce negative bottom width")
     return 0.0 if raw <= tolerance else raw
+
+
+@dataclass(frozen=True, slots=True)
+class DryEtchCenterSupport:
+    """Exact wall-normal erosion of one symmetric dry-etch cross-section."""
+
+    width_m: float
+    depth_m: float
+    sidewall_angle_deg: float
+    bottom_width_m: float
+    effective_radius_m: float
+    minimum_depth_m: float
+    maximum_depth_m: float
+
+    @property
+    def sidewall_sine(self) -> float:
+        return math.sin(math.radians(self.sidewall_angle_deg))
+
+    @property
+    def sidewall_cotangent(self) -> float:
+        if self.sidewall_angle_deg == 90.0:
+            return 0.0
+        return 1.0 / math.tan(math.radians(self.sidewall_angle_deg))
+
+    @property
+    def bottom_wall_present(self) -> bool:
+        return self.bottom_width_m > 0.0
+
+    @property
+    def topology(self) -> str:
+        tolerance = BOTTOM_WIDTH_RELATIVE_TOLERANCE * max(self.width_m, 1.0e-9)
+        if self.accessible_half_width_m(self.minimum_depth_m) <= tolerance:
+            return "TRIANGLE"
+        if self.sidewall_angle_deg == 90.0:
+            return "RECTANGLE"
+        return "TRAPEZOID"
+
+    @property
+    def area_m2(self) -> float:
+        span = self.maximum_depth_m - self.minimum_depth_m
+        return span * (
+            self.accessible_half_width_m(self.minimum_depth_m)
+            + self.accessible_half_width_m(self.maximum_depth_m)
+        )
+
+    def physical_half_width_m(self, depth_m: float) -> float:
+        return 0.5 * self.bottom_width_m + depth_m * self.sidewall_cotangent
+
+    def accessible_half_width_m(self, depth_m: float) -> float:
+        half_width = (
+            self.physical_half_width_m(depth_m)
+            - self.effective_radius_m / self.sidewall_sine
+        )
+        tolerance = BOTTOM_WIDTH_RELATIVE_TOLERANCE * max(self.width_m, 1.0e-9)
+        return 0.0 if abs(half_width) <= tolerance else half_width
+
+    def coordinates(self, lateral_fraction: float, depth_fraction: float) -> tuple[float, float]:
+        depth = self.minimum_depth_m + depth_fraction * (
+            self.maximum_depth_m - self.minimum_depth_m
+        )
+        lateral = lateral_fraction * self.accessible_half_width_m(depth)
+        return lateral, depth
+
+    def wall_normal_distances_m(self, lateral_m: float, depth_m: float) -> tuple[float, ...]:
+        physical_half_width = self.physical_half_width_m(depth_m)
+        sine = self.sidewall_sine
+        distances = [
+            (physical_half_width + lateral_m) * sine,
+            (physical_half_width - lateral_m) * sine,
+            self.depth_m - depth_m,
+        ]
+        if self.bottom_wall_present:
+            distances.append(depth_m)
+        return tuple(distances)
+
+
+def dry_etch_center_support(
+    width_m: float,
+    depth_m: float,
+    sidewall_angle_deg: float,
+    effective_radius_m: float,
+) -> DryEtchCenterSupport:
+    """Return the exact nonempty center support after eroding every physical wall."""
+
+    for name, value in (
+        ("width_m", width_m),
+        ("depth_m", depth_m),
+        ("sidewall_angle_deg", sidewall_angle_deg),
+        ("effective_radius_m", effective_radius_m),
+    ):
+        _finite(name, value)
+    if width_m <= 0.0 or depth_m <= 0.0 or effective_radius_m <= 0.0:
+        raise FoundationError(E_DOMAIN_INVALID, "dry-etch support dimensions must be positive")
+    bottom = dry_etch_bottom_width(width_m, depth_m, sidewall_angle_deg)
+    sine = math.sin(math.radians(sidewall_angle_deg))
+    if sidewall_angle_deg == 90.0:
+        minimum_depth = effective_radius_m
+    else:
+        cotangent = 1.0 / math.tan(math.radians(sidewall_angle_deg))
+        sidewall_vertex_depth = (
+            effective_radius_m / sine - 0.5 * bottom
+        ) / cotangent
+        minimum_depth = max(effective_radius_m, sidewall_vertex_depth)
+    maximum_depth = depth_m - effective_radius_m
+    tolerance = BOTTOM_WIDTH_RELATIVE_TOLERANCE * max(width_m, depth_m, 1.0e-9)
+    if maximum_depth - minimum_depth <= tolerance:
+        raise FoundationError(
+            E_DOMAIN_INVALID,
+            "particle plus effective wall exclusion has no nonempty exact center support",
+        )
+    support = DryEtchCenterSupport(
+        width_m=width_m,
+        depth_m=depth_m,
+        sidewall_angle_deg=sidewall_angle_deg,
+        bottom_width_m=bottom,
+        effective_radius_m=effective_radius_m,
+        minimum_depth_m=minimum_depth,
+        maximum_depth_m=maximum_depth,
+    )
+    if support.accessible_half_width_m(maximum_depth) <= tolerance or support.area_m2 <= 0.0:
+        raise FoundationError(
+            E_DOMAIN_INVALID,
+            "particle plus effective wall exclusion has no nonempty exact center support",
+        )
+    return support
 
 
 @dataclass(frozen=True, slots=True)
@@ -237,7 +362,7 @@ class SimulationState:
     source: SourceState = SourceState()
     environment: EnvironmentState = EnvironmentState()
     observation: ObservationOperatorState = ObservationOperatorState()
-    physics_profile_id: str = "FORMAL_FIELD_COUPLING_M1_V4_DRY_ETCH"
+    physics_profile_id: str = "FORMAL_FIELD_COUPLING_M1_V5_EXACT_SUPPORT"
 
     def __post_init__(self) -> None:
         from .profiles import (
@@ -276,7 +401,7 @@ class SimulationState:
                     E_DOMAIN_INVALID, "scaling-control geometry requires positive bottom width"
                 )
         else:
-            bottom = dry_etch_bottom_width(
+            dry_etch_bottom_width(
                 self.geometry.width_m,
                 self.geometry.depth_m,
                 self.geometry.sidewall_angle_deg,
@@ -288,19 +413,12 @@ class SimulationState:
                 )
         radius = 0.5 * self.particle.diameter_m
         effective_radius = radius + self.environment.effective_wall_exclusion_m
-        if 2.0 * effective_radius >= self.geometry.depth_m:
-            raise FoundationError(
-                E_DOMAIN_INVALID, "particle plus effective clearance does not fit channel depth"
-            )
-        z = effective_radius + self.position.depth_fraction * (
-            self.geometry.depth_m - 2.0 * effective_radius
+        dry_etch_center_support(
+            self.geometry.width_m,
+            self.geometry.depth_m,
+            self.geometry.sidewall_angle_deg,
+            effective_radius,
         )
-        local_width = bottom + (self.geometry.width_m - bottom) * (z / self.geometry.depth_m)
-        if local_width <= 2.0 * effective_radius:
-            raise FoundationError(
-                E_DOMAIN_INVALID,
-                "particle plus effective clearance does not fit local channel width",
-            )
         if self.observation.collection_na >= self.environment.fill_refractive_index:
             raise FoundationError(
                 E_DOMAIN_INVALID, "collection NA must be below the fill-medium refractive index"
@@ -312,6 +430,24 @@ class SimulationState:
     @property
     def state_id(self) -> str:
         return canonical_sha256(self.to_payload())
+
+    @property
+    def reference_design_id(self) -> str:
+        payload = self.to_payload()
+        return canonical_sha256(
+            {
+                "physics_profile_id": self.physics_profile_id,
+                "geometry": payload["geometry"],
+                "source": payload["source"],
+                "environment": payload["environment"],
+            }
+        )
+
+    @property
+    def split_group_id(self) -> str:
+        """Leakage-safe default group for rows sharing one reference design."""
+
+        return self.reference_design_id
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> SimulationState:
@@ -338,7 +474,10 @@ class SimulationState:
                 environment=EnvironmentState(**dict(value.get("environment", {}))),
                 observation=ObservationOperatorState(**dict(value.get("observation", {}))),
                 physics_profile_id=str(
-                    value.get("physics_profile_id", "FORMAL_FIELD_COUPLING_M1_V4_DRY_ETCH")
+                    value.get(
+                        "physics_profile_id",
+                        "FORMAL_FIELD_COUPLING_M1_V5_EXACT_SUPPORT",
+                    )
                 ),
             )
         except TypeError as exc:
@@ -352,6 +491,8 @@ class StateResult:
     physics_profile_id: str
     fidelity_class: str
     claim_ceiling: str
+    reference_design_id: str
+    split_group_id: str
     reference_block_id: str
     particle_block_id: str
     position_block_id: str
@@ -367,6 +508,8 @@ class StateResult:
     eta_imag: float | None
     eta_abs: float | None
     C_phase_rad: float | None
+    coupling_defined: bool
+    coupling_undefined_reason: str | None
     numerical_status: str
     uncertainty: dict[str, Any]
     applicability_profile_id: str

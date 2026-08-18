@@ -1,4 +1,4 @@
-"""Qualify the current v4 dry-etch formal-M1 profile and run its performance pilot."""
+"""Qualify the current v5 exact-support formal-M1 profile and performance envelope."""
 
 from __future__ import annotations
 
@@ -18,6 +18,8 @@ from pathlib import Path
 from time import monotonic
 from typing import Any
 
+import numpy as np
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -35,12 +37,18 @@ from nodi_foundation import (
 )
 from nodi_foundation._physics.formal_m1 import (
     CONFIG_HASH,
+    _analyzer_weight,
+    _pupil_grid,
     clear_formal_caches,
     evaluate_formal_m1,
     formal_cache_stats,
 )
 from nodi_foundation.datasets import sample_states
-from nodi_foundation.models import canonical_sha256, dry_etch_bottom_width
+from nodi_foundation.models import (
+    canonical_sha256,
+    dry_etch_bottom_width,
+    dry_etch_center_support,
+)
 from nodi_foundation.profiles import FAST_CONTROL_PROFILE, FORMAL_PROFILE
 from nodi_foundation.resources import (
     COMMITTED_MEMORY_LIMIT_BYTES,
@@ -188,7 +196,7 @@ def _boundary_panel_states() -> tuple[SimulationState, ...]:
 def _panel_states() -> tuple[SimulationState, ...]:
     sampled = sample_states(
         DatasetSpec(
-            output_dir=ROOT / "tmp" / "unused-v4-qualification-sample",
+            output_dir=ROOT / "tmp" / "unused-v5-qualification-sample",
             state_count=368,
             feature_ranges={
                 "channel_width": (2.0e-7, 2.0e-6),
@@ -268,13 +276,23 @@ def _scaling_control_regression() -> dict[str, Any]:
 
 def _invariants() -> dict[str, Any]:
     base = SimulationState()
-    zero = simulate_state(
+    zero_particle = simulate_state(
         replace(
             base,
             particle=replace(
                 base.particle,
                 refractive_index_real=base.environment.fill_refractive_index,
                 refractive_index_imag=0.0,
+            ),
+        )
+    )
+    zero_reference = simulate_state(
+        replace(
+            base,
+            environment=replace(
+                base.environment,
+                fill_refractive_index=1.40,
+                wall_refractive_index=1.40,
             ),
         )
     )
@@ -326,14 +344,131 @@ def _invariants() -> dict[str, Any]:
         base,
         observation=replace(base.observation, detector_sector_center_rad=2.0 * math.pi),
     )
+    radius = 0.5 * base.particle.diameter_m
+    effective_radius = radius + base.environment.effective_wall_exclusion_m
+    rectangle = dry_etch_center_support(8.0e-7, 5.5e-7, 90.0, effective_radius)
+    rectangle_area = (8.0e-7 - 2.0 * effective_radius) * (
+        5.5e-7 - 2.0 * effective_radius
+    )
+    rectangle_area_error = abs(rectangle.area_m2 - rectangle_area) / rectangle_area
+    rectangle_u, rectangle_z = rectangle.coordinates(
+        base.position.lateral_fraction,
+        base.position.depth_fraction,
+    )
+    legacy_rectangle_z = effective_radius + base.position.depth_fraction * (
+        base.geometry.depth_m - 2.0 * effective_radius
+    )
+    legacy_rectangle_u = base.position.lateral_fraction * (
+        0.5 * base.geometry.width_m - effective_radius
+    )
+    rectangle_coordinate_error = max(
+        abs(rectangle_u - legacy_rectangle_u),
+        abs(rectangle_z - legacy_rectangle_z),
+    )
+    apex_depth = 2.0e-6
+    apex_angle = 70.0
+    apex_width = 2.0 * apex_depth / math.tan(math.radians(apex_angle))
+    apex = dry_etch_center_support(apex_width, apex_depth, apex_angle, 1.2e-7)
+    minimum_exact_margin = math.inf
+    for state in _boundary_panel_states():
+        state_effective_radius = (
+            0.5 * state.particle.diameter_m
+            + state.environment.effective_wall_exclusion_m
+        )
+        support = dry_etch_center_support(
+            state.geometry.width_m,
+            state.geometry.depth_m,
+            state.geometry.sidewall_angle_deg,
+            state_effective_radius,
+        )
+        lateral, depth = support.coordinates(
+            state.position.lateral_fraction,
+            state.position.depth_fraction,
+        )
+        minimum_exact_margin = min(
+            minimum_exact_margin,
+            *(
+                distance - state_effective_radius
+                for distance in support.wall_normal_distances_m(lateral, depth)
+            ),
+        )
+    grid = _pupil_grid(1.20, 1.30, 0.0, 1.0, 0.0, 2.0 * math.pi, 8, 16)
+    k0 = 2.0 * math.pi / base.source.wavelength_m
+    q_from_fill_angle = k0 * 1.30 * np.sin(grid.theta)
+    q_from_physical_na = k0 * 1.20 * grid.rho
+    q_error = float(
+        np.max(np.abs(q_from_fill_angle - q_from_physical_na))
+        / np.max(np.abs(q_from_physical_na))
+    )
+    analyzer = _analyzer_weight(base)
+    analyzer_eigenvalues = np.linalg.eigvalsh(analyzer)
+    analyzer_error = float(
+        max(
+            np.max(np.abs(analyzer_eigenvalues - np.asarray([0.0, 1.0]))),
+            abs(np.trace(analyzer).real - 1.0),
+        )
+    )
+    group_particle = replace(base, particle=replace(base.particle, diameter_m=8.0e-8))
+    group_operator = replace(
+        base,
+        observation=replace(base.observation, analyzer_azimuth_rad=math.pi / 3.0),
+    )
+    group_source = replace(
+        base,
+        source=replace(base.source, beam_offset_longitudinal_over_w0=0.2),
+    )
     checks = {
-        "zero_contrast": {
-            "status": "PASS" if zero.S_W <= 1.0e-24 and zero.C_r_W == zero.C_i_W == 0.0 else "FAIL",
-            "S_W": zero.S_W,
+        "exact_wall_normal_support": {
+            "status": "PASS"
+            if rectangle_area_error <= 2.0e-14
+            and rectangle_coordinate_error <= 1.0e-21
+            and apex.topology == "TRIANGLE"
+            and apex.area_m2 > 0.0
+            and minimum_exact_margin >= -1.0e-21
+            else "FAIL",
+            "rectangle_relative_area_error": rectangle_area_error,
+            "rectangle_coordinate_absolute_error_m": rectangle_coordinate_error,
+            "apex_eroded_topology": apex.topology,
+            "apex_eroded_area_m2": apex.area_m2,
+            "minimum_boundary_panel_effective_margin_m": minimum_exact_margin,
+        },
+        "common_fill_side_transverse_wavevector": {
+            "status": "PASS" if q_error <= 2.0e-15 else "FAIL",
+            "maximum_relative_error": q_error,
+            "identity": "k_fill*sin(theta_fill)=k0*NA*rho",
+        },
+        "passive_analyzer_projector": {
+            "status": "PASS" if analyzer_error <= 2.0e-15 else "FAIL",
+            "maximum_eigenvalue_or_trace_error": analyzer_error,
+            "eigenvalues": analyzer_eigenvalues.tolist(),
+        },
+        "zero_particle_contrast": {
+            "status": "PASS"
+            if zero_particle.S_W <= 1.0e-24
+            and abs(complex(zero_particle.C_r_W, zero_particle.C_i_W)) <= 1.0e-24
+            and not zero_particle.coupling_defined
+            and zero_particle.coupling_undefined_reason == "LOW_PARTICLE_FIELD"
+            else "FAIL",
+            "S_W": zero_particle.S_W,
+            "coupling_undefined_reason": zero_particle.coupling_undefined_reason,
+        },
+        "zero_wall_fill_contrast": {
+            "status": "PASS"
+            if zero_reference.B_bg_W <= 1.0e-24
+            and abs(complex(zero_reference.C_r_W, zero_reference.C_i_W)) <= 1.0e-24
+            and not zero_reference.coupling_defined
+            and zero_reference.coupling_undefined_reason == "LOW_REFERENCE_FIELD"
+            else "FAIL",
+            "B_bg_W": zero_reference.B_bg_W,
+            "coupling_undefined_reason": zero_reference.coupling_undefined_reason,
         },
         "normalization_power_homogeneity": {
-            "status": "PASS" if power_error <= 2.0e-12 else "FAIL",
+            "status": "PASS"
+            if power_error <= 2.0e-12
+            and first.coupling_defined == doubled.coupling_defined
+            else "FAIL",
             "maximum_relative_error": power_error,
+            "coupling_defined_stable": first.coupling_defined == doubled.coupling_defined,
         },
         "annular_support_monotonicity": {
             "status": "PASS"
@@ -359,6 +494,13 @@ def _invariants() -> dict[str, Any]:
             "status": "PASS"
             if source_zero.state_id == source_period.state_id
             and sector_zero.state_id == sector_period.state_id
+            else "FAIL"
+        },
+        "reference_design_split_identity": {
+            "status": "PASS"
+            if base.split_group_id == group_particle.split_group_id
+            and base.split_group_id == group_operator.split_group_id
+            and base.split_group_id != group_source.split_group_id
             else "FAIL"
         },
     }
@@ -458,7 +600,7 @@ def _qualification_panel() -> dict[str, Any]:
             }
         )
     return {
-        "panel_id": "FORMAL_M1_V4_DRY_ETCH_QUALIFICATION_PANEL",
+        "panel_id": "FORMAL_M1_V5_EXACT_SUPPORT_QUALIFICATION_PANEL",
         "design": "16_EXPLICIT_BOUNDARY_AND_APEX_CASES_PLUS_368_SEEDED_COUPLED_DOMAIN_CASES",
         "state_count": len(rows),
         "case_tolerance": PANEL_TOLERANCE,
@@ -628,7 +770,7 @@ def _performance_pilot() -> dict[str, Any]:
         and warm_stats["operator_summary"]["hits"] == 4096
     )
     return {
-        "pilot_id": "FORMAL_M1_V4_DRY_ETCH_NESTED_PERFORMANCE_PILOT",
+        "pilot_id": "FORMAL_M1_V5_EXACT_SUPPORT_NESTED_PERFORMANCE_PILOT",
         "design": "64_REFERENCE_X_4_PARTICLE_X_4_POSITION_X_4_OBSERVATION_OPERATOR",
         "state_count": len(states),
         "selected_workers": 1,
@@ -681,10 +823,10 @@ def build_report() -> dict[str, Any]:
     )
     report: dict[str, Any] = {
         "report_schema_version": 2,
-        "report_id": "FORMAL_M1_V4_DRY_ETCH_QUALIFICATION_REPORT",
+        "report_id": "FORMAL_M1_V5_EXACT_SUPPORT_QUALIFICATION_REPORT",
         "overall_disposition": overall,
         "physics_profile_id": FORMAL_PROFILE,
-        "engine_schema_feature_versions": ["4.0.0", "4.0", "4.0"],
+        "engine_schema_feature_versions": ["5.0.0", "5.0", "5.0"],
         "runtime_environment": {
             "python": platform.python_version(),
             "numpy": package_version("numpy"),
@@ -735,19 +877,33 @@ def build_report() -> dict[str, Any]:
             "sidewall_angle_semantics": "ANGLE_FROM_SUBSTRATE_PLANE",
             "bottom_width_equation": "width_m-2*depth_m/tan(sidewall_angle_deg)",
             "zero_bottom_width": "LEGAL_CLOSED_APEX_TERMINUS",
-            "negative_bottom_width": "REJECTED_EXCEPT_FLOATING_POINT_ROUNDOFF_NORMALIZED_TO_ZERO",
+            "negative_bottom_width": (
+                "REJECTED_EXCEPT_FLOATING_POINT_ROUNDOFF_NORMALIZED_TO_ZERO"
+            ),
+            "particle_center_support": (
+                "EXACT_WALL_NORMAL_EROSION_BY_GEOMETRIC_RADIUS_PLUS_DECLARED_EXCLUSION"
+            ),
+            "position_mapping": (
+                "BIJECTIVE_DEPTH_THEN_LATERAL_FRACTIONS_INSIDE_ERODED_SUPPORT"
+            ),
         },
-        "material_index_semantics": "STATE_REFRACTIVE_INDICES_APPLY_AT_STATE_WAVELENGTH",
+        "material_index_semantics": (
+            "PARTICLE_COMPLEX_AND_FILL_WALL_REAL_INDICES_APPLY_AT_STATE_WAVELENGTH"
+        ),
+        "pupil_contract": (
+            "COMMON_FILL_SIDE_Q_EQUALS_K0_TIMES_NA_TIMES_RHO_WITH_SOLID_ANGLE_MEASURE"
+        ),
+        "analyzer_contract": "PASSIVE_IDEAL_RANK_ONE_PROJECTOR_TRACE_ONE",
         "normalization_power_semantics": (
             "LINEAR_REFERENCE_NORMALIZATION_NOT_EXPERIMENTAL_EXPOSURE_DOSE"
         ),
         "wall_exclusion_semantics": (
-            "ONE_SIDED_EFFECTIVE_SURFACE_LAYER_SEPARATE_FROM_PARTICLE_RADIUS_"
-            "SUBTRACTED_ONCE_PER_WALL"
+            "EXACT_WALL_NORMAL_EROSION_BY_PARTICLE_RADIUS_PLUS_ONE_SIDED_"
+            "EFFECTIVE_SURFACE_LAYER_WITH_NO_DOUBLE_SUBTRACTION"
         ),
         "claim_ceiling": (
-            "FIRST_ORDER_FORMAL_FIELD_COUPLING_M1_"
-            "IDEALIZED_DRY_ETCH_WITH_DECLARED_LIMITS"
+            "FIRST_ORDER_FORMAL_FIELD_COUPLING_M1_EXACT_DRY_ETCH_SUPPORT_"
+            "WITH_DECLARED_LIMITS"
         ),
     }
     report["payload_sha256"] = canonical_sha256(report)
@@ -759,7 +915,7 @@ def main() -> int:
     parser.add_argument(
         "--output",
         type=Path,
-        default=ROOT / "formal_m1_v4_dry_etch_qualification_report.json",
+        default=ROOT / "formal_m1_v5_qualification_report.json",
     )
     args = parser.parse_args()
     report = build_report()

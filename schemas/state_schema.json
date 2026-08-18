@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Shaughn0419/NODI-Simulation-Foundation/schemas/state_schema.json",
-  "title": "NODI Foundation SimulationState v4 dry-etch",
+  "title": "NODI Foundation SimulationState v5 exact dry-etch support",
   "type": "object",
   "additionalProperties": false,
   "required": ["geometry", "particle", "position", "source", "environment", "observation", "physics_profile_id"],
@@ -75,6 +75,6 @@
         "detector_sector_width_rad": {"type": "number", "minimum": 0.5235987755982988, "maximum": 6.283185307179586}
       }
     },
-    "physics_profile_id": {"enum": ["FORMAL_FIELD_COUPLING_M1_V4_DRY_ETCH", "FAST_SCALING_CONTROL_V1"]}
+    "physics_profile_id": {"enum": ["FORMAL_FIELD_COUPLING_M1_V5_EXACT_SUPPORT", "FAST_SCALING_CONTROL_V1"]}
   }
 }

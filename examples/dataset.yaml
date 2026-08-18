@@ -1,10 +1,10 @@
-release_name: NODI-QUICK-DRY-ETCH-V4
-profile: FORMAL_FIELD_COUPLING_M1_V4_DRY_ETCH
+release_name: NODI-QUICK-DRY-ETCH-V5
+profile: FORMAL_FIELD_COUPLING_M1_V5_EXACT_SUPPORT
 state_count: 64
 sampling_method: sobol
 seed: 20260818
-feature_catalogue_hash: 24050b9515056731a391a591813c32fa523e26c8fd06c6283290174bc1ea55ce
-qualification_report_hash: f6eda106983dcd72ac96290bd44f6dc644d4f8bbb8590f9a9248c8de715936e5
+feature_catalogue_hash: 7ee0e153c9adc07be18062e5eacb93c72e4fad291e3fe4e8deb24799681aa512
+qualification_report_hash: 3cbad01222fefcc2e06220b0206852230bdffc530220a0b625b4128dcfdcfa4f
 feature_ranges:
   channel_width: [8.0e-7, 1.6e-6]
   channel_depth: [3.0e-7, 8.0e-7]

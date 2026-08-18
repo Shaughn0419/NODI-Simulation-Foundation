@@ -17,7 +17,7 @@ from .models import (
 from .releases import DatasetRelease, PairRelease, ValidationReport, validate_release
 from .simulate import derive_observation, simulate_state
 
-__version__ = "4.0.0"
+__version__ = "5.0.0"
 
 __all__ = [
     "EnvironmentState",

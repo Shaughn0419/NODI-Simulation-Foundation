@@ -1,6 +1,6 @@
 {
-  "profile_id": "FORMAL_FIELD_COUPLING_M1_V4_DRY_ETCH",
-  "engine_version": "4.0.0",
+  "profile_id": "FORMAL_FIELD_COUPLING_M1_V5_EXACT_SUPPORT",
+  "engine_version": "5.0.0",
   "source_specification": {
     "repository": "Shaughn0419/NODI_ReferenceCoupling_Paper",
     "commit": "bb27a3ac882344e4ef26663102cd6c0a6882b675",
@@ -10,20 +10,26 @@
     "time_convention": "EXP_MINUS_I_OMEGA_T",
     "normalization_power_semantics": "LINEAR_GAUSSIAN_NORMALIZATION_POWER_W_NOT_EXPOSURE_DOSE",
     "beam_offset_semantics": "DIMENSIONLESS_RELATIVE_TO_GAUSSIAN_WAIST_W0",
-    "collection_na_semantics": "PHYSICAL_NA_EQUALS_FILL_INDEX_TIMES_SIN_THETA_MAX",
-    "material_index_semantics": "EACH_COMPLEX_INDEX_IS_EVALUATED_AT_STATE_WAVELENGTH",
+    "collection_na_semantics": "COMMON_FILL_SIDE_PUPIL_WITH_Q_EQUALS_K0_TIMES_NA_TIMES_RHO",
+    "material_index_semantics": "PARTICLE_COMPLEX_AND_FILL_WALL_REAL_INDICES_APPLY_AT_STATE_WAVELENGTH",
     "geometry_semantics": "IDEALIZED_DRY_ETCH_TOP_WIDTH_DEPTH_ANGLE_FROM_SUBSTRATE",
     "bottom_width_semantics": "NONNEGATIVE_WITH_ZERO_AS_CLOSED_APEX_TERMINUS",
-    "effective_wall_exclusion_semantics": "ONE_SIDED_DECLARED_SURFACE_EXCLUSION_LAYER_SUBTRACTED_ONCE_NOT_UNIVERSALLY_CALIBRATED",
-    "channel_length_waist_radii": 12.0,
+    "effective_wall_exclusion_semantics": "EXACT_WALL_NORMAL_EROSION_BY_PARTICLE_RADIUS_PLUS_ONE_SIDED_DECLARED_LAYER",
+    "longitudinal_gaussian_transform": "UNBOUNDED_ANALYTIC_FOURIER_TRANSFORM_NO_ARTIFICIAL_EDGE",
     "empty_channel_reference": "FINITE_2D_TRAPEZOID_REPLACEMENT_PHASE_SCREEN",
     "particle": "HOMOGENEOUS_SPHERE_COMPLEX_MIE",
-    "local_excitation": "ANALYTIC_PARTIAL_REPLACEMENT_EMPTY_CHANNEL_FIELD",
+    "local_excitation": "FILL_MEDIUM_NORMALIZED_ANALYTIC_PARTIAL_REPLACEMENT_FIELD",
     "field_space": "VECTOR_ANGULAR_PUPIL_SQRT_W_PER_SQRT_SR",
+    "receiver_medium": "FILL_MEDIUM",
+    "reference_angular_spectrum": "SCALAR_RAYLEIGH_SOMMERFELD_COSINE_OBLIQUITY",
+    "reference_lateral_quadrature": "PIECEWISE_GAUSS_SPLIT_AT_BOTTOM_TO_SIDEWALL_PATH_SLOPE_CHANGES",
+    "interface_transmission": "UNITY_EFFECTIVE_PHASE_SCREEN_NO_FRESNEL_OR_SNELL_INTERFACE_MODEL",
+    "analyzer_semantics": "PASSIVE_IDEAL_RANK_ONE_PROJECTOR_TRACE_ONE",
     "coupling": "COMMON_FIELD_B_S_C_TRACE_GAMMA_F_DAGGER_W_F"
   },
   "numerics": {
     "production_pupil_order": [80, 160],
+    "pupil_quadrature": "TENSOR_GAUSS_LEGENDRE_IN_NORMALIZED_RADIUS_AND_AZIMUTH",
     "qualification_pupil_orders": [[32, 64], [64, 128], [80, 160], [96, 192]],
     "production_reference_gauss_order_per_axis": 96,
     "qualification_reference_gauss_orders": [64, 96, 128],
@@ -32,7 +38,7 @@
     "mie_relative_tolerance": 1e-10,
     "mie_absolute_tolerance": 1e-12,
     "mie_consecutive_passes": 2,
-    "low_field_W": 1e-24
+    "low_field_fraction_of_normalization_power": 1e-24
   },
   "claim_boundary": {
     "fidelity_class": "FORMAL_WITH_LIMITS",

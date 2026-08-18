@@ -31,8 +31,8 @@ from nodi_foundation.profiles import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_v4_release_boundary_campaigns_have_disjoint_state_identities() -> None:
-    builder = runpy.run_path(str(ROOT / "tools/build_reference_releases_v4.py"))
+def test_v5_release_boundary_campaigns_have_disjoint_state_and_split_identities() -> None:
+    builder = runpy.run_path(str(ROOT / "tools/build_reference_releases_v5.py"))
     reference_blocks = builder["_reference_blocks"]
     states_for_references = builder["_states_for_references"]
     development = reference_blocks(4, builder["DEVELOPMENT_SEED"])
@@ -51,6 +51,9 @@ def test_v4_release_boundary_campaigns_have_disjoint_state_identities() -> None:
     }
     assert len(development_ids) == len(evaluation_ids) == 512
     assert development_ids.isdisjoint(evaluation_ids)
+    assert {state.split_group_id for state in development}.isdisjoint(
+        state.split_group_id for state in evaluation
+    )
 
 
 def test_state_schema_accepts_canonical_state() -> None:
@@ -82,7 +85,7 @@ def test_dataset_release_is_deterministic_and_valid(tmp_path) -> None:
     table = pq.read_table(first.path / "data.parquet")
     assert table.num_rows == 16
     assert {"state_id", "S_W", "C_r_W", "C_i_W"} <= set(table.column_names)
-    assert len([name for name in table.column_names if name.startswith("derived.")]) == 36
+    assert len([name for name in table.column_names if name.startswith("derived.")]) == 50
     for row in table.to_pylist():
         assert row["derived.effective_confinement_ratio"] >= (
             row["derived.particle_geometric_confinement_ratio"]
@@ -90,6 +93,7 @@ def test_dataset_release_is_deterministic_and_valid(tmp_path) -> None:
         assert row["derived.minimum_surface_clearance_m"] >= (
             row["environment.effective_wall_exclusion_m"] - 1.0e-21
         )
+        assert row["derived.minimum_effective_wall_margin_m"] >= -1.0e-21
         assert 0.0 < row["derived.collection_sine_in_fill"] < 1.0
 
 
@@ -154,7 +158,7 @@ def test_formal_release_requires_and_preserves_qualification_binding(tmp_path) -
 
 def test_cli_info_capabilities_simulate_and_dataset(tmp_path, capsys) -> None:
     assert main(["info"]) == 0
-    assert json.loads(capsys.readouterr().out)["package_version"] == "4.0.0"
+    assert json.loads(capsys.readouterr().out)["package_version"] == "5.0.0"
     assert main(["capabilities"]) == 0
     assert json.loads(capsys.readouterr().out)["feature_count"] == 27
 

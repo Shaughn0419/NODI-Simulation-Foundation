@@ -7,7 +7,7 @@
     "commit": "bb27a3ac882344e4ef26663102cd6c0a6882b675",
     "role": "ANALYTICAL_M1_SPECIFICATION_BASELINE",
     "license_status": "SOURCE_COPY_NOT_AUTHORIZED_REWRITE_ONLY",
-    "claim_ceiling": "BASELINE_ONLY_V4_CORRECTIONS_ARE_QUALIFIED_LOCALLY",
+    "claim_ceiling": "BASELINE_ONLY_V5_EXACT_SUPPORT_AND_COMMON_PUPIL_CORRECTIONS_ARE_QUALIFIED_LOCALLY",
     "sources": [
       {"path": "src/nodi_refcoupling/physical_contracts/quantities.py", "blob": "8137905a550ff443d20e02beaf09c7c99d14c558", "migration": "REIMPLEMENT"},
       {"path": "src/nodi_refcoupling/physical_contracts/frames.py", "blob": "9718986cb8458fd26cffb734efc47689c29a91e9", "migration": "REIMPLEMENT"},
@@ -57,6 +57,7 @@
     ],
     "foundation_decisions": [
       "ZERO_BOTTOM_WIDTH_IS_LEGAL_PER_USER_DRY_ETCH_TERMINUS_OVERRIDE",
+      "PARTICLE_CENTER_SUPPORT_USES_EXACT_WALL_NORMAL_HALF_PLANE_EROSION",
       "ONE_HOMOGENEOUS_SPHERE_DIAMETER_SERVES_GEOMETRIC_AND_OPTICAL_M1_ROLES",
       "NO_TRANSPORT_HYDRODYNAMIC_OR_DEFORMABILITY_DIAMETERS_WITHOUT_CONSUMER_PHYSICS"
     ],
@@ -69,9 +70,9 @@
   },
   "control_regression_contract": {
     "upstream_runtime_import_in_product": false,
-    "formal_v4_parity_to_v1_required": false,
+    "formal_v5_parity_to_v1_required": false,
     "fast_scaling_control_regression_required": true,
     "outputs": ["S_W", "C_r_W", "C_i_W", "B_bg_W", "eta_real", "eta_imag"],
-    "normal_ci": "COMPACT_FAST_CONTROL_GOLDEN_PLUS_FORMAL_V4_CONVERGENCE_PANEL"
+    "normal_ci": "COMPACT_FAST_CONTROL_GOLDEN_PLUS_FORMAL_V5_CONSOLIDATED_INVARIANT_AND_CONVERGENCE_PANEL"
   }
 }

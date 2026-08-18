@@ -27,6 +27,7 @@ from .models import (
     SimulationState,
     StateResult,
     dry_etch_bottom_width,
+    dry_etch_center_support,
 )
 from .profiles import (
     FORMAL_CONTROL_REGRESSION_SHA256,
@@ -51,7 +52,7 @@ class DatasetSpec:
     profile: str = FORMAL_PROFILE
     feature_catalogue_hash: str | None = None
     qualification_report_hash: str | None = None
-    release_name: str = "NODI-CUSTOM-V4"
+    release_name: str = "NODI-CUSTOM-V5"
     execution: ExecutionSpec = ExecutionSpec()
 
     def __post_init__(self) -> None:
@@ -158,6 +159,8 @@ def result_row(result: StateResult) -> dict[str, Any]:
             "physics_profile_id": result.physics_profile_id,
             "fidelity_class": result.fidelity_class,
             "claim_ceiling": result.claim_ceiling,
+            "reference_design_id": result.reference_design_id,
+            "split_group_id": result.split_group_id,
             "reference_block_id": result.reference_block_id,
             "particle_block_id": result.particle_block_id,
             "position_block_id": result.position_block_id,
@@ -168,9 +171,13 @@ def result_row(result: StateResult) -> dict[str, Any]:
             "C_r_W": result.C_r_W,
             "C_i_W": result.C_i_W,
             "Y_0_W": result.Y_0_W,
+            "combined_total_W": result.combined_total_W,
             "eta_real": result.eta_real,
             "eta_imag": result.eta_imag,
             "eta_abs": result.eta_abs,
+            "C_phase_rad": result.C_phase_rad,
+            "coupling_defined": result.coupling_defined,
+            "coupling_undefined_reason": result.coupling_undefined_reason,
             "numerical_status": result.numerical_status,
             "applicability_profile_id": result.applicability_profile_id,
             "operator_qualification_status": result.operator_qualification_status,
@@ -185,7 +192,7 @@ def result_row(result: StateResult) -> dict[str, Any]:
     return row
 
 
-def _derived_descriptors(inputs: dict[str, Any]) -> dict[str, float]:
+def _derived_descriptors(inputs: dict[str, Any]) -> dict[str, Any]:
     geometry = inputs["geometry"]
     particle = inputs["particle"]
     position = inputs["position"]
@@ -203,17 +210,27 @@ def _derived_descriptors(inputs: dict[str, Any]) -> dict[str, float]:
     fill_index = float(environment["fill_refractive_index"])
     wall_exclusion = float(environment["effective_wall_exclusion_m"])
     effective_radius = radius + wall_exclusion
-    particle_depth = effective_radius + float(position["depth_fraction"]) * (
-        depth - 2.0 * effective_radius
+    support = dry_etch_center_support(
+        width,
+        depth,
+        angle,
+        effective_radius,
     )
-    local_width = bottom_width + (width - bottom_width) * particle_depth / depth
-    lateral_support = 0.5 * local_width - effective_radius
-    particle_lateral = float(position["lateral_fraction"]) * lateral_support
+    particle_lateral, particle_depth = support.coordinates(
+        float(position["lateral_fraction"]),
+        float(position["depth_fraction"]),
+    )
+    local_width = 2.0 * support.physical_half_width_m(particle_depth)
+    accessible_half_width = support.accessible_half_width_m(particle_depth)
     particle_longitudinal = float(position["longitudinal_over_w0"]) * waist
     beam_longitudinal = float(source["beam_offset_longitudinal_over_w0"]) * waist
     beam_lateral = float(source["beam_offset_lateral_over_w0"]) * waist
-    local_lateral_clearance = 0.5 * local_width - abs(particle_lateral) - radius
-    vertical_clearance = min(particle_depth - radius, depth - particle_depth - radius)
+    wall_distances = support.wall_normal_distances_m(particle_lateral, particle_depth)
+    lateral_surface_clearance = min(wall_distances[:2]) - radius
+    vertical_surface_clearance = min(wall_distances[2:]) - radius
+    minimum_center_distance = min(wall_distances)
+    minimum_surface_clearance = minimum_center_distance - radius
+    minimum_effective_margin = minimum_center_distance - effective_radius
     relative_index = complex(
         float(particle["refractive_index_real"]),
         float(particle["refractive_index_imag"]),
@@ -254,17 +271,34 @@ def _derived_descriptors(inputs: dict[str, Any]) -> dict[str, float]:
         / waist,
         "derived.particle_depth_m": particle_depth,
         "derived.local_channel_width_m": local_width,
+        "derived.exact_accessible_half_width_m": accessible_half_width,
+        "derived.exact_accessible_depth_min_m": support.minimum_depth_m,
+        "derived.exact_accessible_depth_max_m": support.maximum_depth_m,
+        "derived.exact_accessible_depth_span_m": (
+            support.maximum_depth_m - support.minimum_depth_m
+        ),
+        "derived.exact_accessible_cross_section_area_m2": support.area_m2,
+        "derived.exact_accessible_topology": support.topology,
+        "derived.bottom_wall_present": support.bottom_wall_present,
+        "derived.geometric_diameter_m": diameter,
+        "derived.optical_diameter_m": diameter,
+        "derived.effective_steric_diameter_m": diameter + 2.0 * wall_exclusion,
         "derived.particle_geometric_confinement_ratio": diameter
         / min(local_width, depth),
         "derived.effective_confinement_ratio": (diameter + 2.0 * wall_exclusion)
         / min(local_width, depth),
-        "derived.local_lateral_surface_clearance_m": local_lateral_clearance,
-        "derived.vertical_surface_clearance_m": vertical_clearance,
-        "derived.minimum_surface_clearance_m": min(
-            local_lateral_clearance, vertical_clearance
-        ),
+        "derived.local_lateral_surface_clearance_m": lateral_surface_clearance,
+        "derived.vertical_surface_clearance_m": vertical_surface_clearance,
+        "derived.minimum_center_to_wall_normal_distance_m": minimum_center_distance,
+        "derived.minimum_surface_clearance_m": minimum_surface_clearance,
+        "derived.minimum_effective_wall_margin_m": minimum_effective_margin,
         "derived.wall_fill_contrast": float(environment["wall_refractive_index"]) - fill_index,
         "derived.collection_sine_in_fill": float(operator["collection_na"]) / fill_index,
+        "derived.pupil_outer_transverse_wavevector_per_m": 2.0
+        * math.pi
+        / wavelength
+        * float(operator["collection_na"])
+        * float(operator["pupil_outer_radius"]),
         "derived.annulus_geometric_area_fraction": float(operator["pupil_outer_radius"]) ** 2
         - float(operator["pupil_inner_radius"]) ** 2,
         "derived.selected_pupil_geometric_area_fraction": (
@@ -288,6 +322,7 @@ def _derived_descriptors(inputs: dict[str, Any]) -> dict[str, float]:
         "derived.analyzer_stokes_u": math.cos(2.0 * analyzer_ellipticity)
         * math.sin(2.0 * analyzer_azimuth),
         "derived.analyzer_stokes_v": math.sin(2.0 * analyzer_ellipticity),
+        "derived.analyzer_projector_trace": 1.0,
     }
 
 
@@ -467,7 +502,7 @@ def dataset_spec_from_mapping(value: dict[str, Any], *, output_dir: Path) -> Dat
             if value.get("qualification_report_hash") is None
             else str(value["qualification_report_hash"])
         ),
-        release_name=str(value.get("release_name", "NODI-CUSTOM-V4")),
+        release_name=str(value.get("release_name", "NODI-CUSTOM-V5")),
         execution=execution,
     )
 

@@ -1,4 +1,4 @@
-"""Build the current v4 formal capability and reference-data products."""
+"""Build the current v5 exact-support formal reference-data products."""
 
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import numpy as np
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 from scipy.stats import qmc
 
@@ -45,7 +46,7 @@ from nodi_foundation import (
 )
 from nodi_foundation.datasets import result_row, state_with_value
 from nodi_foundation.errors import FoundationError
-from nodi_foundation.models import canonical_json, canonical_sha256
+from nodi_foundation.models import canonical_json, canonical_sha256, dry_etch_bottom_width
 from nodi_foundation.profiles import (
     FORMAL_IMPLEMENTATION_SHA256,
     FORMAL_NUMERICAL_PROFILE_SHA256,
@@ -64,8 +65,8 @@ from nodi_foundation.resources import (
     system_committed_memory_bytes,
 )
 
-RELEASE_ROOT = ROOT / "releases/nodi-v4"
-RECEIPT_PATH = ROOT / "v4_release_manifest.json"
+RELEASE_ROOT = ROOT / "releases/nodi-v5"
+RECEIPT_PATH = ROOT / "v5_release_manifest.json"
 CAPABILITY_REFERENCE_BLOCKS = 256
 CAPABILITY_STATE_COUNT = 32_768
 QUICKSTART_STATE_COUNT = 4_096
@@ -79,7 +80,7 @@ REFERENCE_CHUNK = 8
 DEVELOPMENT_SEED = 2026081921
 EVALUATION_SEED = 2026081922
 PAIR_CHUNK = 512
-WHEEL_NAME = "nodi_foundation-4.0.0-py3-none-any.whl"
+WHEEL_NAME = "nodi_foundation-5.0.0-py3-none-any.whl"
 DEFAULT_BOUNDARY_POLICY = "UNPOLARIZED_BOUNDARY_V1"
 EVALUATION_BOUNDARY_POLICY = "PARTIALLY_POLARIZED_BOUNDARY_V1"
 
@@ -146,8 +147,18 @@ def _feature_rows() -> tuple[dict[str, Any], ...]:
 def _feature_ranges() -> dict[str, tuple[float, float]]:
     return {
         str(row["id"]): (
-            float(row.get("formal_domain", row["domain"])[0]),
-            float(row.get("formal_domain", row["domain"])[1]),
+            float(
+                row.get(
+                    "reference_release_domain",
+                    row.get("formal_domain", row["domain"]),
+                )[0]
+            ),
+            float(
+                row.get(
+                    "reference_release_domain",
+                    row.get("formal_domain", row["domain"]),
+                )[1]
+            ),
         )
         for row in _feature_rows()
     }
@@ -224,21 +235,44 @@ def _boundary_reference_blocks(
         EVALUATION_BOUNDARY_POLICY,
     }:
         raise ValueError(f"unsupported boundary policy: {boundary_policy}")
-    apex_70_width = 4.0e-6 / math.tan(math.radians(70.0))
-    apex_80_width = 4.0e-6 / math.tan(math.radians(80.0))
-    rows = (
-        (2.0e-7, 2.0e-7, 90.0, 4.0e-7, 9.0e-7, 2.0e-9),
-        (apex_70_width, 2.0e-6, 70.0, 6.0e-7, 1.1e-6, 5.0e-9),
-        (apex_80_width, 2.0e-6, 80.0, 9.0e-7, 1.8e-6, 1.0e-8),
-        (2.0e-6, 2.0e-6, 90.0, 7.5e-7, 1.4e-6, 2.0e-8),
-    )
+    rows: list[tuple[float, float, float, float, float, float]] = [
+        (2.0e-7, 2.0e-7, 90.0, 4.0e-7, 9.0e-7, 0.0),
+        (2.0e-6, 2.0e-6, 90.0, 9.0e-7, 1.8e-6, 2.0e-8),
+        (4.0e-7, 2.0e-6, 90.0, 6.0e-7, 1.2e-6, 0.0),
+        (2.0e-6, 2.0e-7, 90.0, 5.0e-7, 9.0e-7, 2.0e-8),
+    ]
+    for index, angle in enumerate((70.0, 72.5, 75.0, 77.5, 80.0, 82.5, 85.0, 87.0)):
+        depth = 2.0e-6
+        rows.append(
+            (
+                2.0 * depth / math.tan(math.radians(angle)),
+                depth,
+                angle,
+                4.0e-7 + index * (5.0e-7 / 7.0),
+                9.0e-7 + index * (9.0e-7 / 7.0),
+                (0.0, 2.0e-9, 1.0e-8, 2.0e-8)[index % 4],
+            )
+        )
+    for index, angle in enumerate((70.0, 75.0, 80.0, 85.0)):
+        depth = 1.5e-6
+        bottom_width = 2.0e-8
+        rows.append(
+            (
+                bottom_width + 2.0 * depth / math.tan(math.radians(angle)),
+                depth,
+                angle,
+                5.0e-7 + index * 1.0e-7,
+                1.0e-6 + index * 2.0e-7,
+                (0.0, 5.0e-9, 1.0e-8, 2.0e-8)[index],
+            )
+        )
     states = []
     for index, (width, depth, angle, wavelength, waist, exclusion) in enumerate(rows):
         phase_fraction = ((seed % 10_007) + 101 * index) % 10_007 / 10_007
         degree_of_polarization = (
             0.0
             if boundary_policy == DEFAULT_BOUNDARY_POLICY
-            else 0.2 * (index + 1)
+            else 0.05 * (index + 1)
         )
         states.append(
             SimulationState(
@@ -252,8 +286,8 @@ def _boundary_reference_blocks(
                     degree_of_polarization=degree_of_polarization,
                 ),
                 environment=EnvironmentState(
-                    1.30 + 0.02 * index,
-                    1.42 + 0.03 * index,
+                    min(1.40, 1.30 + 0.10 * index / (len(rows) - 1)),
+                    min(1.55, 1.42 + 0.13 * index / (len(rows) - 1)),
                     exclusion,
                 ),
             )
@@ -283,7 +317,11 @@ def _reference_blocks(
             waist = minimum_waist + float(row[4]) * (2.0e-6 - minimum_waist)
             fill = 1.30 + float(row[10]) * 0.09
             wall = 1.41 + float(row[11]) * 0.13
-            exclusion = 2.0e-9 + float(row[12]) * 1.8e-8
+            exclusion = (
+                0.0
+                if len(accepted) % 16 == 0
+                else 2.0e-9 + float(row[12]) * 1.8e-8
+            )
             try:
                 state = SimulationState(
                     geometry=GeometryState(width, depth, angle),
@@ -339,7 +377,7 @@ def _particle_blocks(
                 lower = middle
             else:
                 upper = middle
-        upper = lower * (1.0 - 1.0e-12)
+        upper = lower
     diameters = np.linspace(2.0e-8, upper, 8)
     real_shift = reference_index % 8
     imaginary_shift = (reference_index // 8) % 8
@@ -380,10 +418,14 @@ def _radical_inverse(index: int, base: int) -> float:
 
 
 def _operator_blocks(reference_index: int) -> tuple[ObservationOperatorState, ...]:
-    if reference_index == 0:
+    if reference_index < 16:
+        analyzer_azimuth = math.pi * (reference_index + 1) / 17.0
         return (
             ObservationOperatorState(collection_na=0.40),
-            ObservationOperatorState(collection_na=1.20),
+            ObservationOperatorState(
+                collection_na=1.20,
+                analyzer_azimuth_rad=analyzer_azimuth,
+            ),
             ObservationOperatorState(
                 pupil_inner_radius=0.75,
                 pupil_outer_radius=0.85,
@@ -391,7 +433,7 @@ def _operator_blocks(reference_index: int) -> tuple[ObservationOperatorState, ..
             ),
             ObservationOperatorState(
                 collection_na=1.20,
-                analyzer_azimuth_rad=math.pi / 3.0,
+                analyzer_azimuth_rad=analyzer_azimuth,
                 analyzer_ellipticity_rad=math.pi / 8.0,
                 detector_sector_center_rad=3.0 * math.pi / 4.0,
                 detector_sector_width_rad=math.pi / 2.0,
@@ -493,7 +535,7 @@ def _reference_design_matrix(references: tuple[SimulationState, ...]) -> np.ndar
                 source.degree_of_polarization,
                 (state.environment.fill_refractive_index - 1.30) / 0.09,
                 (state.environment.wall_refractive_index - 1.41) / 0.13,
-                (state.environment.effective_wall_exclusion_m - 2.0e-9) / 1.8e-8,
+                state.environment.effective_wall_exclusion_m / 2.0e-8,
             )
         )
     return np.asarray(rows, dtype=np.float64)
@@ -767,7 +809,24 @@ def _build_nested_release(
                 else {}
             ),
             "reference_blocks": reference_count,
+            "reference_design_groups": reference_count,
             "reference_sobol_dimension_count": 13,
+            "exact_closed_apex_reference_designs": sum(
+                dry_etch_bottom_width(
+                    state.geometry.width_m,
+                    state.geometry.depth_m,
+                    state.geometry.sidewall_angle_deg,
+                )
+                == 0.0
+                for state in references
+            ),
+            "zero_wall_exclusion_reference_designs": sum(
+                state.environment.effective_wall_exclusion_m == 0.0
+                for state in references
+            ),
+            "wall_exclusion_sampling_policy": (
+                "EXPLICIT_ZERO_STRATUM_EVERY_16TH_REFERENCE_PLUS_2_TO_20_NM_SOBOL"
+            ),
             "normalization_power_W": 1.0,
             "normalization_power_policy": (
                 "FIXED_UNIT_REFERENCE_TO_AVOID_EXACT_LINEAR_DUPLICATION"
@@ -925,8 +984,8 @@ def _build_capability_freeze(
     seed: int,
     workers: int,
 ) -> dict[str, Any]:
-    directory = RELEASE_ROOT / "NODI-QUALIFICATION-PROFILE-V4"
-    release_name = "NODI-QUALIFICATION-PROFILE-V4"
+    directory = RELEASE_ROOT / "NODI-QUALIFICATION-PROFILE-V5"
+    release_name = "NODI-QUALIFICATION-PROFILE-V5"
     if _valid_release(directory, release_name, CAPABILITY_STATE_COUNT):
         return _read_manifest(directory)
     states = tuple(_nested_states(CAPABILITY_REFERENCE_BLOCKS, seed))
@@ -967,10 +1026,10 @@ def _release_summary(directory: Path, manifest: dict[str, Any]) -> dict[str, Any
 
 
 def run_sprint(seed: int, workers: int) -> dict[str, Any]:
-    capability_dir = RELEASE_ROOT / "NODI-CAPABILITY-SPRINT-V4"
+    capability_dir = RELEASE_ROOT / "NODI-CAPABILITY-SPRINT-V5"
     capability = _build_nested_release(
         capability_dir,
-        release_name="NODI-CAPABILITY-SPRINT-V4",
+        release_name="NODI-CAPABILITY-SPRINT-V5",
         reference_count=CAPABILITY_REFERENCE_BLOCKS,
         seed=seed,
         workers=workers,
@@ -978,10 +1037,10 @@ def run_sprint(seed: int, workers: int) -> dict[str, Any]:
     qualification = _build_capability_freeze(capability, seed, workers)
     receipt = {
         "manifest_schema_version": 2,
-        "phase": "R5_V4_FORMAL_CAPABILITY_FREEZE",
+        "phase": "R6_V5_FORMAL_CAPABILITY_FREEZE",
         "status": "PASS",
         "profile": FORMAL_PROFILE,
-        "release_root": "releases/nodi-v4",
+        "release_root": "releases/nodi-v5",
         "maximum_workers": 24,
         "selected_workers": workers,
         "parallelism_selection": PARALLELISM_SELECTION,
@@ -996,21 +1055,21 @@ def run_sprint(seed: int, workers: int) -> dict[str, Any]:
         "releases": {
             "capability_sprint": _release_summary(capability_dir, capability),
             "qualification_profile": _release_summary(
-                RELEASE_ROOT / "NODI-QUALIFICATION-PROFILE-V4", qualification
+                RELEASE_ROOT / "NODI-QUALIFICATION-PROFILE-V5", qualification
             ),
         },
-        "formal_reference_data_state": "BLOCKED_UNTIL_V4_RELEASES_COMPLETE",
+        "formal_reference_data_state": "BLOCKED_UNTIL_V5_RELEASES_COMPLETE",
     }
     _atomic_json(RECEIPT_PATH, receipt)
     return receipt
 
 
 def _build_quickstart(capability: dict[str, Any]) -> dict[str, Any]:
-    directory = RELEASE_ROOT / "NODI-QUICKSTART-V4"
-    release_name = "NODI-QUICKSTART-V4"
+    directory = RELEASE_ROOT / "NODI-QUICKSTART-V5"
+    release_name = "NODI-QUICKSTART-V5"
     if _valid_release(directory, release_name, QUICKSTART_STATE_COUNT):
         return _read_manifest(directory)
-    source = pq.read_table(RELEASE_ROOT / "NODI-CAPABILITY-SPRINT-V4" / "data.parquet")
+    source = pq.read_table(RELEASE_ROOT / "NODI-CAPABILITY-SPRINT-V5" / "data.parquet")
     subset = source.sort_by([("state_id", "ascending")]).slice(0, QUICKSTART_STATE_COUNT)
     directory.mkdir(parents=True, exist_ok=True)
     _write_table(directory / "data.parquet", subset)
@@ -1123,11 +1182,15 @@ def _pair_row(
         "pair_id": _pair_id(feature, anchor, low_state, high_state),
         "physics_profile_id": low.physics_profile_id,
         "anchor_state_id": anchor.state_id,
+        "anchor_reference_design_id": anchor.reference_design_id,
+        "anchor_split_group_id": anchor.split_group_id,
         "feature": feature,
         "low_value": low_value,
         "high_value": high_value,
         "low_state_id": low_state.state_id,
         "high_state_id": high_state.state_id,
+        "low_split_group_id": low_state.split_group_id,
+        "high_split_group_id": high_state.split_group_id,
         "low_S_W": low.S_W,
         "high_S_W": high.S_W,
         "delta_S_W": high.S_W - low.S_W,
@@ -1257,15 +1320,15 @@ def _build_interventions(
     qualification: dict[str, Any],
     workers: int,
 ) -> dict[str, Any]:
-    directory = RELEASE_ROOT / "NODI-ATLAS-DEV-INTERVENTIONS-V4"
-    release_name = "NODI-ATLAS-DEV-INTERVENTIONS-V4"
+    directory = RELEASE_ROOT / "NODI-ATLAS-DEV-INTERVENTIONS-V5"
+    release_name = "NODI-ATLAS-DEV-INTERVENTIONS-V5"
     if _valid_release(directory, release_name, DEVELOPMENT_PAIR_COUNT):
         return _read_manifest(directory)
     features = (
         str(qualification["metadata"]["primary_exposure_family"]),
         str(qualification["metadata"]["replication_exposure_family"]),
     )
-    records = _intervention_records(RELEASE_ROOT / "NODI-ATLAS-DEV-V4", features)
+    records = _intervention_records(RELEASE_ROOT / "NODI-ATLAS-DEV-V5", features)
     directory.mkdir(parents=True, exist_ok=True)
     work = directory / ".work"
     work.mkdir(parents=True, exist_ok=True)
@@ -1382,18 +1445,18 @@ def _build_evaluation_releases(
     development: dict[str, Any],
     workers: int,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    input_directory = RELEASE_ROOT / "NODI-ATLAS-EVAL-INPUTS-V4"
-    label_directory = RELEASE_ROOT / "NODI-ATLAS-EVAL-LABELS-V4.sealed"
-    input_name = "NODI-ATLAS-EVAL-INPUTS-V4"
-    label_name = "NODI-ATLAS-EVAL-LABELS-V4.sealed"
+    input_directory = RELEASE_ROOT / "NODI-ATLAS-EVAL-INPUTS-V5"
+    label_directory = RELEASE_ROOT / "NODI-ATLAS-EVAL-LABELS-V5.sealed"
+    input_name = "NODI-ATLAS-EVAL-INPUTS-V5"
+    label_name = "NODI-ATLAS-EVAL-LABELS-V5.sealed"
     if _valid_release(
         input_directory, input_name, EVALUATION_STATE_COUNT
     ) and _valid_release(label_directory, label_name, EVALUATION_STATE_COUNT):
         return _read_manifest(input_directory), _read_manifest(label_directory)
-    transition = RELEASE_ROOT / ".evaluation-full-v4"
+    transition = RELEASE_ROOT / ".evaluation-full-v5"
     full_manifest = _build_nested_release(
         transition,
-        release_name="NODI-EVALUATION-FULL-V4-TRANSITION",
+        release_name="NODI-EVALUATION-FULL-V5-TRANSITION",
         reference_count=EVALUATION_REFERENCE_BLOCKS,
         seed=EVALUATION_SEED,
         workers=workers,
@@ -1401,14 +1464,17 @@ def _build_evaluation_releases(
     )
     full = pq.read_table(transition / "data.parquet")
     identifiers = full["state_id"].to_pylist()
-    development_ids = set(
-        pq.read_table(
-            RELEASE_ROOT / "NODI-ATLAS-DEV-V4" / "data.parquet",
-            columns=["state_id"],
-        )["state_id"].to_pylist()
+    development_identity = pq.read_table(
+        RELEASE_ROOT / "NODI-ATLAS-DEV-V5" / "data.parquet",
+        columns=["state_id", "split_group_id"],
     )
+    development_ids = set(development_identity["state_id"].to_pylist())
     if development_ids.intersection(identifiers):
         raise RuntimeError("Development and Evaluation state identities overlap")
+    development_groups = set(development_identity["split_group_id"].to_pylist())
+    evaluation_groups = set(full["split_group_id"].to_pylist())
+    if development_groups.intersection(evaluation_groups):
+        raise RuntimeError("Development and Evaluation split groups overlap")
     anchor_ids = set(sorted(identifiers)[:EVALUATION_ANCHOR_COUNT])
     input_columns = [
         name
@@ -1430,6 +1496,8 @@ def _build_evaluation_releases(
             "physics_profile_id",
             "fidelity_class",
             "claim_ceiling",
+            "reference_design_id",
+            "split_group_id",
             "reference_block_id",
             "particle_block_id",
             "position_block_id",
@@ -1457,9 +1525,13 @@ def _build_evaluation_releases(
             "C_r_W",
             "C_i_W",
             "Y_0_W",
+            "combined_total_W",
             "eta_real",
             "eta_imag",
             "eta_abs",
+            "C_phase_rad",
+            "coupling_defined",
+            "coupling_undefined_reason",
             "result_hash",
         ]
     )
@@ -1498,6 +1570,7 @@ def _build_evaluation_releases(
             "label_commitment_release_id": label_manifest["release_id"],
             "label_delivery_state": "SEALED_NOT_DELIVERED",
             "development_evaluation_shared_state_count": 0,
+            "development_evaluation_shared_split_group_count": 0,
         },
     )
     for directory in (label_directory, input_directory):
@@ -1511,33 +1584,39 @@ def _build_evaluation_releases(
 def _final_acceptance(features: tuple[str, str]) -> dict[str, Any]:
     capability_ids = set(
         pq.read_table(
-            RELEASE_ROOT / "NODI-CAPABILITY-SPRINT-V4" / "data.parquet",
+            RELEASE_ROOT / "NODI-CAPABILITY-SPRINT-V5" / "data.parquet",
             columns=["state_id"],
         )["state_id"].to_pylist()
     )
     quickstart_ids = set(
         pq.read_table(
-            RELEASE_ROOT / "NODI-QUICKSTART-V4" / "data.parquet",
+            RELEASE_ROOT / "NODI-QUICKSTART-V5" / "data.parquet",
             columns=["state_id"],
         )["state_id"].to_pylist()
     )
-    development_ids = set(
-        pq.read_table(
-            RELEASE_ROOT / "NODI-ATLAS-DEV-V4" / "data.parquet",
-            columns=["state_id"],
-        )["state_id"].to_pylist()
+    development = pq.read_table(
+        RELEASE_ROOT / "NODI-ATLAS-DEV-V5" / "data.parquet",
+        columns=["state_id", "reference_design_id", "split_group_id"],
     )
+    development_ids = set(development["state_id"].to_pylist())
+    development_groups = set(development["split_group_id"].to_pylist())
     evaluation = pq.read_table(
-        RELEASE_ROOT / "NODI-ATLAS-EVAL-INPUTS-V4" / "inputs.parquet",
-        columns=["state_id", "is_intervention_anchor"],
+        RELEASE_ROOT / "NODI-ATLAS-EVAL-INPUTS-V5" / "inputs.parquet",
+        columns=[
+            "state_id",
+            "reference_design_id",
+            "split_group_id",
+            "is_intervention_anchor",
+        ],
     )
     evaluation_ids = evaluation["state_id"].to_pylist()
+    evaluation_groups = set(evaluation["split_group_id"].to_pylist())
     label_ids = pq.read_table(
-        RELEASE_ROOT / "NODI-ATLAS-EVAL-LABELS-V4.sealed" / "labels.parquet.sealed",
+        RELEASE_ROOT / "NODI-ATLAS-EVAL-LABELS-V5.sealed" / "labels.parquet.sealed",
         columns=["state_id"],
     )["state_id"].to_pylist()
     pairs = pq.read_table(
-        RELEASE_ROOT / "NODI-ATLAS-DEV-INTERVENTIONS-V4" / "pairs.parquet",
+        RELEASE_ROOT / "NODI-ATLAS-DEV-INTERVENTIONS-V5" / "pairs.parquet",
         columns=["pair_id", "feature"],
     )
     feature_counts = {
@@ -1553,6 +1632,25 @@ def _final_acceptance(features: tuple[str, str]) -> dict[str, Any]:
         "evaluation_unique_state_count": len(set(evaluation_ids)),
         "development_evaluation_shared_state_count": len(
             development_ids.intersection(evaluation_ids)
+        ),
+        "development_unique_split_group_count": len(development_groups),
+        "evaluation_unique_split_group_count": len(evaluation_groups),
+        "development_evaluation_shared_split_group_count": len(
+            development_groups.intersection(evaluation_groups)
+        ),
+        "reference_design_and_split_group_columns_match": bool(
+            pc.all(
+                pc.equal(
+                    development["reference_design_id"],
+                    development["split_group_id"],
+                )
+            ).as_py()
+            and pc.all(
+                pc.equal(
+                    evaluation["reference_design_id"],
+                    evaluation["split_group_id"],
+                )
+            ).as_py()
         ),
         "evaluation_input_label_identity_and_order_match": evaluation_ids == label_ids,
         "evaluation_intervention_anchor_count": sum(
@@ -1573,31 +1671,37 @@ def _final_acceptance(features: tuple[str, str]) -> dict[str, Any]:
         and acceptance["development_unique_state_count"] == DEVELOPMENT_STATE_COUNT
         and acceptance["evaluation_unique_state_count"] == EVALUATION_STATE_COUNT
         and acceptance["development_evaluation_shared_state_count"] == 0
+        and acceptance["development_unique_split_group_count"]
+        == DEVELOPMENT_REFERENCE_BLOCKS
+        and acceptance["evaluation_unique_split_group_count"]
+        == EVALUATION_REFERENCE_BLOCKS
+        and acceptance["development_evaluation_shared_split_group_count"] == 0
+        and acceptance["reference_design_and_split_group_columns_match"]
         and acceptance["evaluation_input_label_identity_and_order_match"]
         and acceptance["evaluation_intervention_anchor_count"] == EVALUATION_ANCHOR_COUNT
         and acceptance["development_intervention_unique_pair_count"]
         == DEVELOPMENT_PAIR_COUNT
         and feature_counts == expected_features
     ):
-        raise RuntimeError(f"v4 cross-release acceptance failed: {acceptance}")
+        raise RuntimeError(f"v5 cross-release acceptance failed: {acceptance}")
     return acceptance
 
 
 def run_all(seed: int, workers: int) -> dict[str, Any]:
-    capability_directory = RELEASE_ROOT / "NODI-CAPABILITY-SPRINT-V4"
+    capability_directory = RELEASE_ROOT / "NODI-CAPABILITY-SPRINT-V5"
     capability = _build_nested_release(
         capability_directory,
-        release_name="NODI-CAPABILITY-SPRINT-V4",
+        release_name="NODI-CAPABILITY-SPRINT-V5",
         reference_count=CAPABILITY_REFERENCE_BLOCKS,
         seed=seed,
         workers=workers,
     )
     qualification = _build_capability_freeze(capability, seed, workers)
     quickstart = _build_quickstart(capability)
-    development_directory = RELEASE_ROOT / "NODI-ATLAS-DEV-V4"
+    development_directory = RELEASE_ROOT / "NODI-ATLAS-DEV-V5"
     development = _build_nested_release(
         development_directory,
-        release_name="NODI-ATLAS-DEV-V4",
+        release_name="NODI-ATLAS-DEV-V5",
         reference_count=DEVELOPMENT_REFERENCE_BLOCKS,
         seed=DEVELOPMENT_SEED,
         workers=workers,
@@ -1606,14 +1710,14 @@ def run_all(seed: int, workers: int) -> dict[str, Any]:
     evaluation_inputs, evaluation_labels = _build_evaluation_releases(development, workers)
     directories = {
         "capability_sprint": capability_directory,
-        "qualification_profile": RELEASE_ROOT / "NODI-QUALIFICATION-PROFILE-V4",
-        "quickstart": RELEASE_ROOT / "NODI-QUICKSTART-V4",
+        "qualification_profile": RELEASE_ROOT / "NODI-QUALIFICATION-PROFILE-V5",
+        "quickstart": RELEASE_ROOT / "NODI-QUICKSTART-V5",
         "development_atlas": development_directory,
         "development_interventions": (
-            RELEASE_ROOT / "NODI-ATLAS-DEV-INTERVENTIONS-V4"
+            RELEASE_ROOT / "NODI-ATLAS-DEV-INTERVENTIONS-V5"
         ),
-        "evaluation_inputs": RELEASE_ROOT / "NODI-ATLAS-EVAL-INPUTS-V4",
-        "evaluation_labels": RELEASE_ROOT / "NODI-ATLAS-EVAL-LABELS-V4.sealed",
+        "evaluation_inputs": RELEASE_ROOT / "NODI-ATLAS-EVAL-INPUTS-V5",
+        "evaluation_labels": RELEASE_ROOT / "NODI-ATLAS-EVAL-LABELS-V5.sealed",
     }
     manifests = {
         "capability_sprint": capability,
@@ -1629,7 +1733,7 @@ def run_all(seed: int, workers: int) -> dict[str, Any]:
         for name, manifest in manifests.items()
     }
     if not all(release["valid"] for release in releases.values()):
-        raise RuntimeError("one or more v4 releases failed final validation")
+        raise RuntimeError("one or more v5 releases failed final validation")
     selected_features = (
         str(qualification["metadata"]["primary_exposure_family"]),
         str(qualification["metadata"]["replication_exposure_family"]),
@@ -1641,12 +1745,12 @@ def run_all(seed: int, workers: int) -> dict[str, Any]:
     receipt = {
         "manifest_schema_version": 2,
         "product": "NODI Simulation Foundation",
-        "version": "4.0.0",
+        "version": "5.0.0",
         "release_date": "2026-08-18",
-        "phase": "R5_V4_CORRECTED_FORMAL_REFERENCE_RELEASES",
+        "phase": "R6_V5_EXACT_SUPPORT_FORMAL_REFERENCE_RELEASES",
         "status": "PASS",
         "profile": FORMAL_PROFILE,
-        "release_root": "releases/nodi-v4",
+        "release_root": "releases/nodi-v5",
         "maximum_workers": 24,
         "selected_workers": workers,
         "parallelism_selection": PARALLELISM_SELECTION,
@@ -1660,14 +1764,14 @@ def run_all(seed: int, workers: int) -> dict[str, Any]:
             "replication_exposure_family"
         ],
         "feature_campaign_state": "FROZEN_SINGLE_FORMAL_SPRINT",
-        "development_size_state": "V4_INFORMATION_BEARING_524288_STATE_ATLAS",
+        "development_size_state": "V5_INFORMATION_BEARING_524288_STATE_ATLAS",
         "label_delivery_state": "SEALED_NOT_DELIVERED",
         "formal_reference_data_state": (
             "ELIGIBLE_REFERENCE_LABELS_WITH_DECLARED_LIMITS_NOT_EXPERIMENTAL_TRUTH"
         ),
         "source_archive": {
             "mode": "GIT_ANNOTATED_TAG",
-            "tag": "v4.0.0",
+            "tag": "v5.0.0",
             "repository": "https://github.com/Shaughn0419/NODI-Simulation-Foundation",
         },
         "software_delivery": {

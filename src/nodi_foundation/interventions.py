@@ -33,7 +33,7 @@ class PairSpec:
     feature: str
     low_value: float
     high_value: float
-    release_name: str = "NODI-PAIRS-CUSTOM-V4"
+    release_name: str = "NODI-PAIRS-CUSTOM-V5"
     execution: ExecutionSpec = ExecutionSpec()
     feature_catalogue_hash: str | None = None
     qualification_report_hash: str | None = None
@@ -79,11 +79,15 @@ def build_intervention_pairs(pair_spec: PairSpec) -> PairRelease:
                 "pair_id": pair_id,
                 "physics_profile_id": low_result.physics_profile_id,
                 "anchor_state_id": anchor.state_id,
+                "anchor_reference_design_id": anchor.reference_design_id,
+                "anchor_split_group_id": anchor.split_group_id,
                 "feature": pair_spec.feature,
                 "low_value": pair_spec.low_value,
                 "high_value": pair_spec.high_value,
                 "low_state_id": low.state_id,
                 "high_state_id": high.state_id,
+                "low_split_group_id": low.split_group_id,
+                "high_split_group_id": high.split_group_id,
                 "low_S_W": low_result.S_W,
                 "high_S_W": high_result.S_W,
                 "delta_S_W": high_result.S_W - low_result.S_W,

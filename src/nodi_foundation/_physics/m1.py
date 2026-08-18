@@ -12,7 +12,11 @@ import math
 from dataclasses import dataclass
 
 from nodi_foundation.errors import E_NUMERICAL_NONFINITE, FoundationError
-from nodi_foundation.models import SimulationState, canonical_sha256
+from nodi_foundation.models import (
+    SimulationState,
+    canonical_sha256,
+    dry_etch_center_support,
+)
 
 BASE_B_BG_W = 0.20297283613317754
 BASE_S_W = 3.1501989107668475e-7
@@ -54,6 +58,8 @@ class ScalingControlPrimitives:
     eta_imag: float | None
     eta_abs: float | None
     C_phase_rad: float | None
+    coupling_defined: bool
+    coupling_undefined_reason: str | None
     operator_qualification_status: str
     reference_block_id: str
     particle_block_id: str
@@ -73,13 +79,16 @@ def _bottom_width(state: SimulationState) -> float:
 def _particle_coordinates(state: SimulationState) -> tuple[float, float, float]:
     radius = 0.5 * state.particle.diameter_m
     effective_radius = radius + state.environment.effective_wall_exclusion_m
-    bottom = _bottom_width(state)
-    z = effective_radius + state.position.depth_fraction * (
-        state.geometry.depth_m - 2.0 * effective_radius
+    support = dry_etch_center_support(
+        state.geometry.width_m,
+        state.geometry.depth_m,
+        state.geometry.sidewall_angle_deg,
+        effective_radius,
     )
-    width_at_z = bottom + (state.geometry.width_m - bottom) * (z / state.geometry.depth_m)
-    lateral_support = 0.5 * width_at_z - effective_radius
-    u = state.position.lateral_fraction * lateral_support
+    u, z = support.coordinates(
+        state.position.lateral_fraction,
+        state.position.depth_fraction,
+    )
     return state.position.longitudinal_over_w0 * state.source.waist_m, u, z
 
 
@@ -251,6 +260,14 @@ def evaluate_scaling_control(state: SimulationState) -> ScalingControlPrimitives
             eta_imag=None,
             eta_abs=None,
             C_phase_rad=None,
+            coupling_defined=False,
+            coupling_undefined_reason=(
+                "LOW_REFERENCE_AND_PARTICLE_FIELD"
+                if B_bg_W <= LOW_FIELD_W and S_W <= LOW_FIELD_W
+                else "LOW_REFERENCE_FIELD"
+                if B_bg_W <= LOW_FIELD_W
+                else "LOW_PARTICLE_FIELD"
+            ),
             operator_qualification_status="SCALING_CONTROL_ONLY",
             reference_block_id=identifiers[0],
             particle_block_id=identifiers[1],
@@ -301,6 +318,8 @@ def evaluate_scaling_control(state: SimulationState) -> ScalingControlPrimitives
         eta_imag=eta.imag,
         eta_abs=eta_abs,
         C_phase_rad=math.atan2(cross.imag, cross.real),
+        coupling_defined=True,
+        coupling_undefined_reason=None,
         operator_qualification_status="SCALING_CONTROL_ONLY",
         reference_block_id=identifiers[0],
         particle_block_id=identifiers[1],

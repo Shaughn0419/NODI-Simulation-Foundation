@@ -25,6 +25,7 @@ from nodi_foundation.models import (
     SimulationState,
     canonical_sha256,
     dry_etch_bottom_width,
+    dry_etch_center_support,
 )
 from nodi_foundation.profiles import FORMAL_PROFILE
 
@@ -33,7 +34,7 @@ ComplexArray = NDArray[np.complex128]
 
 
 def _configuration() -> tuple[dict[str, Any], str]:
-    resource = files("nodi_foundation.data").joinpath("formal_m1_v4_dry_etch.json")
+    resource = files("nodi_foundation.data").joinpath("formal_m1_v5_exact_support.json")
     raw = resource.read_bytes()
     document = json.loads(raw)
     return document, hashlib.sha256(raw).hexdigest()
@@ -41,7 +42,7 @@ def _configuration() -> tuple[dict[str, Any], str]:
 
 CONFIG, CONFIG_HASH = _configuration()
 NUMERICS = cast(dict[str, Any], CONFIG["numerics"])
-LOW_FIELD_W = float(NUMERICS["low_field_W"])
+LOW_FIELD_FRACTION = float(NUMERICS["low_field_fraction_of_normalization_power"])
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +55,8 @@ class FormalPrimitives:
     eta_imag: float | None
     eta_abs: float | None
     C_phase_rad: float | None
+    coupling_defined: bool
+    coupling_undefined_reason: str | None
     operator_qualification_status: str
     reference_block_id: str
     particle_block_id: str
@@ -105,11 +108,15 @@ def _pupil_grid(
     half_span = 0.5 * (outer - inner)
     rho_1d = inner + half_span * (radial_nodes + 1.0)
     rho_weights = half_span * radial_weights
-    phi_1d = sector_center - 0.5 * sector_width + (
-        np.arange(azimuthal_order, dtype=np.float64) + 0.5
-    ) * (sector_width / azimuthal_order)
+    azimuthal_nodes, azimuthal_weights = np.polynomial.legendre.leggauss(azimuthal_order)
+    phi_1d = sector_center + 0.5 * sector_width * azimuthal_nodes
+    phi_weights = 0.5 * sector_width * azimuthal_weights
     rho, phi = np.meshgrid(rho_1d, phi_1d, indexing="ij")
-    radial_weight, _ = np.meshgrid(rho_weights, phi_1d, indexing="ij")
+    radial_weight, azimuthal_weight = np.meshgrid(
+        rho_weights,
+        phi_weights,
+        indexing="ij",
+    )
     sine = reduced_na * rho
     cosine = np.sqrt(1.0 - sine * sine)
     weights = (
@@ -117,7 +124,7 @@ def _pupil_grid(
         * rho
         / cosine
         * radial_weight
-        * (sector_width / azimuthal_order)
+        * azimuthal_weight
     )
     flat_rho = np.asarray(rho.ravel(), dtype=np.float64)
     flat_theta = np.asarray(np.arcsin(sine).ravel(), dtype=np.float64)
@@ -137,6 +144,7 @@ def _pupil_grid(
             "sector_width": sector_width,
             "radial_order": radial_order,
             "azimuthal_order": azimuthal_order,
+            "azimuthal_quadrature": "GAUSS_LEGENDRE",
         }
     )
     return PupilGrid(flat_rho, flat_theta, flat_phi, flat_weights, grid_id)
@@ -158,6 +166,46 @@ def _trapezoid_path(width: float, depth: float, angle_deg: float, u: FloatArray)
     return np.asarray(path, dtype=np.float64)
 
 
+@lru_cache(maxsize=256)
+def _lateral_quadrature(
+    width: float,
+    depth: float,
+    angle_deg: float,
+    total_order: int,
+) -> tuple[FloatArray, FloatArray]:
+    """Split Gauss integration at the exact trapezoid path-slope changes."""
+
+    bottom = dry_etch_bottom_width(width, depth, angle_deg)
+    top_half = 0.5 * width
+    bottom_half = 0.5 * bottom
+    boundaries = (-top_half, -bottom_half, bottom_half, top_half)
+    intervals = tuple(
+        (left, right)
+        for left, right in zip(boundaries[:-1], boundaries[1:], strict=True)
+        if right - left > 0.0
+    )
+    minimum_per_interval = min(8, max(2, total_order // len(intervals)))
+    lengths = np.asarray([right - left for left, right in intervals], dtype=np.float64)
+    raw_counts = total_order * lengths / width
+    counts = np.maximum(minimum_per_interval, np.floor(raw_counts).astype(np.int64))
+    while int(np.sum(counts)) < total_order:
+        residual = raw_counts - counts
+        counts[int(np.argmax(residual))] += 1
+    nodes_out: list[FloatArray] = []
+    weights_out: list[FloatArray] = []
+    for (left, right), count in zip(intervals, counts, strict=True):
+        nodes, weights = np.polynomial.legendre.leggauss(int(count))
+        half_span = 0.5 * (right - left)
+        midpoint = 0.5 * (right + left)
+        nodes_out.append(np.asarray(midpoint + half_span * nodes, dtype=np.float64))
+        weights_out.append(np.asarray(half_span * weights, dtype=np.float64))
+    combined_nodes = np.concatenate(nodes_out)
+    combined_weights = np.concatenate(weights_out)
+    _freeze(combined_nodes)
+    _freeze(combined_weights)
+    return combined_nodes, combined_weights
+
+
 @lru_cache(maxsize=1024)
 def _reference_scalar(
     width: float,
@@ -173,29 +221,27 @@ def _reference_scalar(
     reference_order: int,
     grid: PupilGrid,
 ) -> ComplexArray:
-    nodes, weights = np.polynomial.legendre.leggauss(reference_order)
-    half_length = 0.5 * float(CONFIG["physics"]["channel_length_waist_radii"]) * waist
-    s = half_length * nodes
-    ws = half_length * weights
-    u = 0.5 * width * nodes
-    wu = 0.5 * width * weights
-    gaussian_s = np.exp(-((s - offset_s) / waist) ** 2)
+    u, wu = _lateral_quadrature(width, depth, angle_deg, reference_order)
     gaussian_u = np.exp(-((u - offset_u) / waist) ** 2)
     path = _trapezoid_path(width, depth, angle_deg, u)
     k0 = 2.0 * math.pi / wavelength
     phase_increment = np.exp(1j * k0 * (fill_index - wall_index) * path) - 1.0
-    transverse = k0 * np.sin(grid.theta)
+    k_fill = k0 * fill_index
+    transverse = k_fill * np.sin(grid.theta)
     q_s = transverse * np.cos(grid.phi)
     q_u = transverse * np.sin(grid.phi)
-    fourier_s = (ws * gaussian_s) @ np.exp(-1j * np.outer(s, q_s))
+    fourier_s = (
+        math.sqrt(math.pi)
+        * waist
+        * np.exp(-0.25 * (waist * q_s) ** 2 - 1j * offset_s * q_s)
+    )
     fourier_u = (wu * gaussian_u * phase_increment) @ np.exp(-1j * np.outer(u, q_u))
-    peak_electric = math.sqrt(4.0 * power / (wall_index * epsilon_0 * c * math.pi * waist**2))
-    common_phase = np.exp(1j * k0 * wall_index * depth / 2.0)
-    k_exit = k0
+    peak_electric = math.sqrt(4.0 * power / (fill_index * epsilon_0 * c * math.pi * waist**2))
+    common_phase = np.exp(1j * k_fill * depth / 2.0)
     scale = (
-        math.sqrt(wall_index * epsilon_0 * c / 2.0)
-        * k_exit
-        * np.sqrt(np.cos(grid.theta))
+        math.sqrt(fill_index * epsilon_0 * c / 2.0)
+        * k_fill
+        * np.cos(grid.theta)
         / (2.0 * math.pi)
     )
     result = np.asarray(
@@ -323,16 +369,18 @@ def _particle_coordinates(state: SimulationState) -> tuple[float, float, float]:
     radius = 0.5 * state.particle.diameter_m
     effective_radius = radius + state.environment.effective_wall_exclusion_m
     geometry = state.geometry
-    bottom = dry_etch_bottom_width(
-        geometry.width_m, geometry.depth_m, geometry.sidewall_angle_deg
+    support = dry_etch_center_support(
+        geometry.width_m,
+        geometry.depth_m,
+        geometry.sidewall_angle_deg,
+        effective_radius,
     )
-    z = effective_radius + state.position.depth_fraction * (
-        geometry.depth_m - 2.0 * effective_radius
+    lateral, z = support.coordinates(
+        state.position.lateral_fraction,
+        state.position.depth_fraction,
     )
-    local_width = bottom + (geometry.width_m - bottom) * z / geometry.depth_m
-    support = 0.5 * local_width - effective_radius
     longitudinal = state.position.longitudinal_over_w0 * state.source.waist_m
-    return longitudinal, state.position.lateral_fraction * support, z
+    return longitudinal, lateral, z
 
 
 def _source_covariance(state: SimulationState) -> ComplexArray:
@@ -356,7 +404,7 @@ def _analyzer_weight(state: SimulationState) -> ComplexArray:
         2.0 * operator.analyzer_azimuth_rad
     )
     v = math.sin(2.0 * operator.analyzer_ellipticity_rad)
-    return np.asarray([[1.0 + q, u - 1j * v], [u + 1j * v, 1.0 - q]])
+    return 0.5 * np.asarray([[1.0 + q, u - 1j * v], [u + 1j * v, 1.0 - q]])
 
 
 @lru_cache(maxsize=8192)
@@ -396,7 +444,7 @@ def _fields(
     peak = math.sqrt(
         4.0
         * source.normalization_power_W
-        / (environment.wall_refractive_index * epsilon_0 * c * math.pi * source.waist_m**2)
+        / (environment.fill_refractive_index * epsilon_0 * c * math.pi * source.waist_m**2)
     )
     envelope = math.exp(
         -(
@@ -405,23 +453,12 @@ def _fields(
         )
         / source.waist_m**2
     )
-    local_phase = np.exp(
-        1j
-        * k0
-        * (
-            environment.wall_refractive_index * (z - 0.5 * state.geometry.depth_m)
-            + (environment.fill_refractive_index - environment.wall_refractive_index) * z
-        )
-    )
+    k_fill = k0 * environment.fill_refractive_index
+    local_phase = np.exp(1j * k_fill * (z - 0.5 * state.geometry.depth_m))
     local = peak * envelope * local_phase
     cos_phi = np.cos(grid.phi)
     sin_phi = np.sin(grid.phi)
-    k_fill = k0 * environment.fill_refractive_index
     prefactor = -math.sqrt(environment.fill_refractive_index * epsilon_0 * c / 2.0) / k_fill
-    bridge = np.sqrt(
-        (environment.wall_refractive_index / environment.fill_refractive_index)
-        * np.cos(grid.theta)
-    )
     translation = np.exp(
         -1j
         * k_fill
@@ -437,7 +474,7 @@ def _fields(
         e_phi = perpendicular * mie.s1
         particle[mode, :, 0] = e_theta * cos_phi - e_phi * sin_phi
         particle[mode, :, 1] = e_theta * sin_phi + e_phi * cos_phi
-    particle *= (prefactor * bridge * translation)[None, :, None]
+    particle *= (prefactor * translation)[None, :, None]
     return reference, particle, mie
 
 
@@ -468,7 +505,10 @@ def _block_ids(
                     "beam_offset_lateral_over_w0",
                 )
             },
-            "environment": payload["environment"],
+            "environment": {
+                "fill_refractive_index": payload["environment"]["fill_refractive_index"],
+                "wall_refractive_index": payload["environment"]["wall_refractive_index"],
+            },
             "reference_gauss_order": reference_order,
             "grid_id": grid.grid_id,
         }
@@ -563,16 +603,31 @@ def _evaluate_formal_cached(
         ),
         mie.receipt_id,
     )
-    if rr.real <= LOW_FIELD_W or ss.real <= LOW_FIELD_W:
+    threshold = LOW_FIELD_FRACTION * state.source.normalization_power_W
+    cauchy_excess = abs(cc) ** 2 - rr.real * ss.real
+    if cauchy_excess > 1.0e-10 * max(rr.real * ss.real, threshold**2):
+        raise FoundationError(E_NUMERICAL_NONFINITE, "formal coupling violates Cauchy bound")
+    phase = None if abs(cc) <= threshold else math.atan2(cc.imag, cc.real)
+    reference_low = rr.real <= threshold
+    particle_low = ss.real <= threshold
+    if reference_low or particle_low:
+        if reference_low and particle_low:
+            undefined_reason = "LOW_REFERENCE_AND_PARTICLE_FIELD"
+        elif reference_low:
+            undefined_reason = "LOW_REFERENCE_FIELD"
+        else:
+            undefined_reason = "LOW_PARTICLE_FIELD"
         return FormalPrimitives(
             rr.real,
             ss.real,
-            0.0,
-            0.0,
+            cc.real,
+            cc.imag,
             None,
             None,
             None,
-            None,
+            phase,
+            False,
+            undefined_reason,
             "FORMAL_WITH_LIMITS",
             reference_id,
             particle_id,
@@ -591,7 +646,9 @@ def _evaluate_formal_cached(
         eta.real,
         eta.imag,
         abs(eta),
-        math.atan2(cc.imag, cc.real),
+        phase,
+        True,
+        None,
         "FORMAL_WITH_LIMITS",
         reference_id,
         particle_id,
@@ -645,5 +702,6 @@ def clear_formal_caches() -> None:
     _evaluate_formal_cached.cache_clear()
     _fields.cache_clear()
     _reference_scalar.cache_clear()
+    _lateral_quadrature.cache_clear()
     _mie_solution.cache_clear()
     _pupil_grid.cache_clear()
