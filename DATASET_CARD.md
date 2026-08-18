@@ -1,4 +1,4 @@
-# NODI Foundation v1 control datasets
+# NODI Foundation reference datasets
 
 ## Summary
 
@@ -95,3 +95,27 @@ retained all 26 primitives and froze `particle_longitudinal` as primary and
 `pupil_inner_radius` as the different-mechanism replication exposure. Its
 release IDs and exact file hashes are recorded in `v2_release_manifest.json`;
 v1 feature selections were not imported.
+
+## v2 composition and split controls
+
+The v2 release set contains a 32,768-state capability sprint, a 4,096-row
+no-recompute Quickstart subset, 524,288 unique Development states, 16,384
+Development intervention pairs, 65,536 fresh Evaluation inputs with 2,048
+marked anchors, and a separately held 65,536-row label commitment. The
+intervention allocation is fixed at 8,192 pairs for `particle_longitudinal` and
+8,192 for `pupil_inner_radius`.
+
+Every scientific row has profile `FORMAL_FIELD_COUPLING_M1_V2` and binds the
+exact R2 qualification report plus the physics, numerical-profile, capability,
+qualification-matrix, and parity-panel hashes. Quickstart state IDs are a subset
+of the capability sprint; Development and Evaluation each contain no duplicate
+state IDs and share zero IDs; Evaluation inputs and labels are identical in ID
+and order. `validate_release` checks content hashes, formal binding, and row
+profile for every delivered table. Exact release IDs and file SHA-256 values are
+in `v2_release_manifest.json`.
+
+The v2 products are eligible formal first-order M1 references with declared
+limits. They do not establish full-wave, COMSOL, experimental, material,
+fabrication, mobility, clogging, yield, calibrated-detection, event-time, or
+unrestricted physical-truth claims. The sealed labels remain owner-only and are
+not delivered before the applicable prediction freeze.

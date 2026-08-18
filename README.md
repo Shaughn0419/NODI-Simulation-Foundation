@@ -90,7 +90,25 @@ limits, and the 4,096-state nested pilot selected one worker and chunk size
 The fresh 32,768-state sprint retained all 26 primitives under its predeclared
 rule and froze `particle_longitudinal` as the primary exposure and
 `pupil_inner_radius` as the different-mechanism replication exposure. R4
-reference products are produced only from this formal v2 identity.
+reference products were produced only from this formal v2 identity.
+
+## Formal v2 reference products
+
+| Product | Rows | Release ID |
+| --- | ---: | --- |
+| NODI-CAPABILITY-SPRINT-V2 | 32,768 | `29f5eab0578bec02e0727d43741e7413bef6141c66c6a856c6932e3565cb73bf` |
+| NODI-QUICKSTART-V2 | 4,096 | `f3241c32eacf613c22e0df17e1a96b9751ad7ad878a7f45d2e27e04e54649fea` |
+| NODI-ATLAS-DEV-V2 | 524,288 | `e2e61698f218cc7e872d40793e14979752cdd705637cf5e28f0ee2979cc9f51b` |
+| Development interventions | 16,384 | `5a955b7f5cac1ef5269fe3e929c94dce9d58bf808ab640154b3b7ecb396efa1a` |
+| NODI-ATLAS-EVAL-INPUTS-V2 | 65,536 | `3470db4cafaf1469a19ae8335b0956763d89a8d7591902fe15dbcc12d9f2e4d6` |
+| NODI-ATLAS-EVAL-LABELS-V2.sealed | 65,536 | `fe44f1fd6ce9ca3b062b8364d24f2eb1f11fc1ebac9c2a9e115e48089f3e5db8` |
+
+Quickstart is a no-recompute subset of the capability sprint. Development and
+Evaluation contain unique states and share zero state IDs. Evaluation inputs
+and labels are exactly aligned in the same order; labels remain an undelivered,
+separate owner-custody commitment. Exact primary-file hashes and the
+qualification-profile release are recorded in
+[v2_release_manifest.json](v2_release_manifest.json).
 
 ## Frozen v1 control products
 
@@ -121,7 +139,7 @@ limitations, and access policy.
 ## Reproducibility and resource policy
 
 ```text
-python tools/build_reference_releases.py
+python tools/build_reference_releases_v2.py --phase all
 ```
 
 Production is deterministic, chunked, recoverable, and capped at 24 aggregate
@@ -129,6 +147,8 @@ workers and less than 210,000,000,000 committed bytes. The historical v1 N3
 pilot measured the control kernel at about 15,876 states/s with one worker.
 The formal v2 worker choice is set only by its R2 nested pilot. Raw logs,
 checkpoints, rebuildable fragments, and large state tables are not committed.
+The immutable v1 control products can still be reconstructed with the historical
+`tools/build_reference_releases.py` producer.
 
 ## Scientific boundary and correction state
 
@@ -140,9 +160,10 @@ full-wave, experimental, calibrated-detection, fabrication, yield, mobility,
 or COMSOL evidence. Dataset size and retained feature count are infrastructure
 properties, not independent scientific claims.
 
-Formal qualification, the nested performance pilot, and the new capability
-sprint are complete. Fresh v2 reference releases remain the final data gate.
-The event-time/readout chain is outside this correction route.
+Formal qualification, the nested performance pilot, the capability sprint, and
+the fresh v2 reference releases are complete. They are eligible as formal M1
+reference products only within the declared first-order ceiling. The
+event-time/readout chain is outside this correction route.
 
 Copyright and reuse terms are in [LICENSE](LICENSE); citation metadata is in
 [CITATION.cff](CITATION.cff).

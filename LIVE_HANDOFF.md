@@ -2,8 +2,8 @@
 
 - Released product version: `v1.0.0` (immutable)
 - Target product version: `v2.0.0`
-- Current state: `R3_PASS_R4_ACTIVE`
-- Current batch: `R4_FORMAL_REFERENCE_RELEASES`
+- Current state: `R4_PASS_V2_RELEASE_ACTIVE`
+- Current batch: `V2_PRODUCT_RELEASE`
 - Physics specification source: Paper 1 analytical M1 at
   `bb27a3ac882344e4ef26663102cd6c0a6882b675`
 - Foundation physics base: `ea01b875d031c18541bf740c3db0a21868d2e318`
@@ -25,7 +25,7 @@
 - v1 Paper 2 final eligibility: `false`
 - v2 default profile ID: `FORMAL_FIELD_COUPLING_M1_V2`
 - v2 release root: `releases/nodi-v2`
-- Paper 2 final intake: `HOLD_UNTIL_R4_REFERENCE_RELEASES_COMPLETE`
+- Paper 2 final intake: `ELIGIBLE_FORMAL_M1_REFERENCE_WITH_DECLARED_LIMITS`
 
 ## Immutable v1 and binding correction
 
@@ -88,3 +88,18 @@ and the qualification-profile release ID is
 Both validate against the exact R2 binding. R4 may now produce the fresh v2
 Quickstart, Development, intervention, Evaluation-input, and sealed-label
 products; Paper 2 intake remains held until that release set is complete.
+
+R4 is complete. Quickstart contains 4,096 rows copied without recomputation from
+the capability sprint. Development contains 524,288 unique formal states and
+16,384 unique intervention pairs split evenly across the frozen primary and
+replication exposures. Evaluation contains 65,536 fresh unique inputs, 2,048
+marked anchors, and an exactly aligned owner-custody label commitment; it shares
+zero state IDs with Development. All seven v2 releases validate, all temporary
+work directories were removed, and the complete external release root is about
+112.7 MB. The exact release IDs and file hashes are in
+`v2_release_manifest.json`.
+
+The data are now eligible as formal first-order M1 reference products under the
+declared limitations. This is not full-wave, COMSOL, experimental, fabrication,
+mobility, event-time, detector-readout, yield, or unrestricted physical-truth
+authority. Sealed Evaluation labels remain `SEALED_NOT_DELIVERED`.

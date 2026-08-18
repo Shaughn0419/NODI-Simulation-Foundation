@@ -29,6 +29,7 @@ from nodi_foundation import (
     PositionState,
     SimulationState,
     SourceState,
+    StateResult,
     capabilities,
     simulate_state,
     validate_release,
@@ -64,6 +65,9 @@ EVALUATION_REFERENCE_BLOCKS = 512
 EVALUATION_STATE_COUNT = 65_536
 EVALUATION_ANCHOR_COUNT = 2_048
 REFERENCE_CHUNK = 64
+DEVELOPMENT_SEED = 2026081821
+EVALUATION_SEED = 2026081822
+PAIR_CHUNK = 2_048
 
 MECHANISM_GROUPS = {
     "CHANNEL_REFERENCE_GEOMETRY": (
@@ -591,12 +595,560 @@ def run_sprint(seed: int) -> dict[str, Any]:
     return receipt
 
 
+def _build_quickstart(capability: dict[str, Any]) -> dict[str, Any]:
+    directory = RELEASE_ROOT / "NODI-QUICKSTART-V2"
+    release_name = "NODI-QUICKSTART-V2"
+    if _valid_release(directory, release_name, QUICKSTART_STATE_COUNT):
+        return _read_manifest(directory)
+    source = pq.read_table(RELEASE_ROOT / "NODI-CAPABILITY-SPRINT-V2" / "data.parquet")
+    subset = source.sort_by([("state_id", "ascending")]).slice(0, QUICKSTART_STATE_COUNT)
+    directory.mkdir(parents=True, exist_ok=True)
+    _write_table(directory / "data.parquet", subset)
+    manifest = write_release_manifest(
+        directory,
+        release_type="NODI_DATASET_RELEASE",
+        primary_files=("data.parquet",),
+        metadata={
+            **_formal_metadata(),
+            "release_name": release_name,
+            "state_count": QUICKSTART_STATE_COUNT,
+            "source_release_id": capability["release_id"],
+            "selection": "LEXICOGRAPHIC_STATE_ID_FIRST_4096_NO_RECOMPUTE",
+        },
+    )
+    report = validate_release(directory)
+    if not report.valid:
+        raise RuntimeError(f"quickstart release validation failed: {report.errors}")
+    return manifest
+
+
+def _state_from_flat_row(row: dict[str, Any]) -> SimulationState:
+    return SimulationState.from_mapping(
+        {
+            "geometry": {
+                "width_m": row["geometry.width_m"],
+                "depth_m": row["geometry.depth_m"],
+                "sidewall_angle_deg": row["geometry.sidewall_angle_deg"],
+            },
+            "particle": {
+                "diameter_m": row["particle.diameter_m"],
+                "refractive_index_real": row["particle.refractive_index_real"],
+                "refractive_index_imag": row["particle.refractive_index_imag"],
+            },
+            "position": {
+                "longitudinal_m": row["position.longitudinal_m"],
+                "lateral_fraction": row["position.lateral_fraction"],
+                "depth_fraction": row["position.depth_fraction"],
+            },
+            "source": {
+                "wavelength_m": row["source.wavelength_m"],
+                "waist_m": row["source.waist_m"],
+                "incident_power_W": row["source.incident_power_W"],
+                "beam_offset_longitudinal_m": row["source.beam_offset_longitudinal_m"],
+                "beam_offset_lateral_m": row["source.beam_offset_lateral_m"],
+                "polarization_azimuth_rad": row["source.polarization_azimuth_rad"],
+                "ellipticity_rad": row["source.ellipticity_rad"],
+                "degree_of_polarization": row["source.degree_of_polarization"],
+            },
+            "environment": {
+                "fill_refractive_index": row["environment.fill_refractive_index"],
+                "wall_refractive_index": row["environment.wall_refractive_index"],
+            },
+            "observation": {
+                "collection_na": row["observation.collection_na"],
+                "analyzer_azimuth_rad": row["observation.analyzer_azimuth_rad"],
+                "analyzer_ellipticity_rad": row["observation.analyzer_ellipticity_rad"],
+                "pupil_inner_radius": row["observation.pupil_inner_radius"],
+                "pupil_outer_radius": row["observation.pupil_outer_radius"],
+                "detector_sector_center_rad": row[
+                    "observation.detector_sector_center_rad"
+                ],
+                "detector_sector_width_rad": row["observation.detector_sector_width_rad"],
+            },
+            "physics_profile_id": row["physics_profile_id"],
+        }
+    )
+
+
+def _feature_value(state: SimulationState, feature: str) -> float:
+    path = next(row["path"] for row in _feature_rows() if row["id"] == feature)
+    group, field = str(path).split(".", 1)
+    return float(state.to_payload()[group][field])
+
+
+def _pair_id(
+    feature: str,
+    anchor: SimulationState,
+    low_state: SimulationState,
+    high_state: SimulationState,
+) -> str:
+    return canonical_sha256(
+        {
+            "anchor_state_id": anchor.state_id,
+            "feature": feature,
+            "low_state_id": low_state.state_id,
+            "high_state_id": high_state.state_id,
+        }
+    )
+
+
+def _pair_row(
+    feature: str,
+    anchor: SimulationState,
+    low_state: SimulationState,
+    high_state: SimulationState,
+    low_value: float,
+    high_value: float,
+    low: StateResult,
+    high: StateResult,
+) -> dict[str, Any]:
+    return {
+        "pair_id": _pair_id(feature, anchor, low_state, high_state),
+        "physics_profile_id": low.physics_profile_id,
+        "anchor_state_id": anchor.state_id,
+        "feature": feature,
+        "low_value": low_value,
+        "high_value": high_value,
+        "low_state_id": low_state.state_id,
+        "high_state_id": high_state.state_id,
+        "low_S_W": low.S_W,
+        "high_S_W": high.S_W,
+        "delta_S_W": high.S_W - low.S_W,
+        "low_C_r_W": low.C_r_W,
+        "high_C_r_W": high.C_r_W,
+        "delta_C_r_W": high.C_r_W - low.C_r_W,
+        "low_C_i_W": low.C_i_W,
+        "high_C_i_W": high.C_i_W,
+        "delta_C_i_W": high.C_i_W - low.C_i_W,
+        "low_Y_0_W": low.Y_0_W,
+        "high_Y_0_W": high.Y_0_W,
+        "delta_Y_0_W": high.Y_0_W - low.Y_0_W,
+    }
+
+
+def _intervention_records(
+    development_directory: Path,
+    features: tuple[str, str],
+) -> list[
+    tuple[str, SimulationState, SimulationState, SimulationState, float, float]
+]:
+    input_columns = [
+        name
+        for name in pq.read_schema(development_directory / "data.parquet").names
+        if name.startswith(
+            (
+                "geometry.",
+                "particle.",
+                "position.",
+                "source.",
+                "environment.",
+                "observation.",
+            )
+        )
+        or name == "physics_profile_id"
+    ]
+    records: list[
+        tuple[str, SimulationState, SimulationState, SimulationState, float, float]
+    ] = []
+    counts = {feature: 0 for feature in features}
+    parquet = pq.ParquetFile(development_directory / "data.parquet")
+    global_index = 0
+    for batch in parquet.iter_batches(batch_size=8_192, columns=input_columns):
+        for row in batch.to_pylist():
+            remainder = global_index % 64
+            global_index += 1
+            if remainder >= len(features):
+                continue
+            feature = features[remainder]
+            if counts[feature] >= DEVELOPMENT_PAIR_COUNT // len(features):
+                continue
+            anchor = _state_from_flat_row(row)
+            pair = _legal_pair(anchor, feature, _feature_ranges()[feature])
+            if pair is None:
+                continue
+            low, high = pair
+            records.append(
+                (
+                    feature,
+                    anchor,
+                    low,
+                    high,
+                    _feature_value(low, feature),
+                    _feature_value(high, feature),
+                )
+            )
+            counts[feature] += 1
+    target = DEVELOPMENT_PAIR_COUNT // len(features)
+    if any(count != target for count in counts.values()):
+        raise RuntimeError(f"insufficient predeclared intervention anchors: {counts}")
+    return records
+
+
+def _pair_fragment_matches(
+    path: Path,
+    records: list[
+        tuple[str, SimulationState, SimulationState, SimulationState, float, float]
+    ],
+) -> bool:
+    if not path.is_file():
+        return False
+    try:
+        table = pq.read_table(path, columns=["pair_id", "physics_profile_id"])
+    except (OSError, pa.ArrowException):
+        return False
+    expected = [_pair_id(record[0], record[1], record[2], record[3]) for record in records]
+    return table["pair_id"].to_pylist() == expected and set(
+        table["physics_profile_id"].to_pylist()
+    ) == {FORMAL_PROFILE}
+
+
+def _build_interventions(
+    development: dict[str, Any],
+    qualification: dict[str, Any],
+) -> dict[str, Any]:
+    directory = RELEASE_ROOT / "NODI-ATLAS-DEV-INTERVENTIONS-V2"
+    release_name = "NODI-ATLAS-DEV-INTERVENTIONS-V2"
+    if _valid_release(directory, release_name, DEVELOPMENT_PAIR_COUNT):
+        return _read_manifest(directory)
+    features = (
+        str(qualification["metadata"]["primary_exposure_family"]),
+        str(qualification["metadata"]["replication_exposure_family"]),
+    )
+    records = _intervention_records(RELEASE_ROOT / "NODI-ATLAS-DEV-V2", features)
+    directory.mkdir(parents=True, exist_ok=True)
+    work = directory / ".work"
+    work.mkdir(parents=True, exist_ok=True)
+    fragments: list[Path] = []
+    for offset in range(0, len(records), PAIR_CHUNK):
+        chunk = records[offset : offset + PAIR_CHUNK]
+        fragment = work / f"part-{offset // PAIR_CHUNK:05d}.parquet"
+        fragments.append(fragment)
+        if not _pair_fragment_matches(fragment, chunk):
+            results = [
+                (simulate_state(record[2]), simulate_state(record[3])) for record in chunk
+            ]
+            rows = [
+                _pair_row(*record, result[0], result[1])
+                for record, result in zip(chunk, results, strict=True)
+            ]
+            _write_table(fragment, pa.Table.from_pylist(rows))
+        print(
+            canonical_json(
+                {
+                    "event": "intervention_chunk",
+                    "pairs_complete": min(offset + PAIR_CHUNK, len(records)),
+                    "pairs_total": len(records),
+                }
+            ),
+            flush=True,
+        )
+    _consolidate(fragments, directory / "pairs.parquet")
+    shutil.rmtree(work)
+    manifest = write_release_manifest(
+        directory,
+        release_type="NODI_PAIR_RELEASE",
+        primary_files=("pairs.parquet",),
+        metadata={
+            **_formal_metadata(),
+            "release_name": release_name,
+            "pair_count": DEVELOPMENT_PAIR_COUNT,
+            "source_release_id": development["release_id"],
+            "features": list(features),
+            "pairs_per_feature": DEVELOPMENT_PAIR_COUNT // len(features),
+            "anchor_selection": "EVERY_64TH_DEVELOPMENT_ROW_OFFSETS_0_AND_1",
+            "selection": "FROZEN_PRIMARY_AND_DIFFERENT_MECHANISM_REPLICATION",
+        },
+    )
+    report = validate_release(directory)
+    if not report.valid:
+        raise RuntimeError(f"intervention release validation failed: {report.errors}")
+    return manifest
+
+
+def _build_evaluation_releases(
+    development: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    input_directory = RELEASE_ROOT / "NODI-ATLAS-EVAL-INPUTS-V2"
+    label_directory = RELEASE_ROOT / "NODI-ATLAS-EVAL-LABELS-V2.sealed"
+    input_name = "NODI-ATLAS-EVAL-INPUTS-V2"
+    label_name = "NODI-ATLAS-EVAL-LABELS-V2.sealed"
+    if _valid_release(
+        input_directory, input_name, EVALUATION_STATE_COUNT
+    ) and _valid_release(label_directory, label_name, EVALUATION_STATE_COUNT):
+        return _read_manifest(input_directory), _read_manifest(label_directory)
+    transition = RELEASE_ROOT / ".evaluation-full-v2"
+    full_manifest = _build_nested_release(
+        transition,
+        release_name="NODI-EVALUATION-FULL-V2-TRANSITION",
+        reference_count=EVALUATION_REFERENCE_BLOCKS,
+        seed=EVALUATION_SEED,
+    )
+    full = pq.read_table(transition / "data.parquet")
+    identifiers = full["state_id"].to_pylist()
+    development_ids = set(
+        pq.read_table(
+            RELEASE_ROOT / "NODI-ATLAS-DEV-V2" / "data.parquet",
+            columns=["state_id"],
+        )["state_id"].to_pylist()
+    )
+    if development_ids.intersection(identifiers):
+        raise RuntimeError("Development and Evaluation state identities overlap")
+    anchor_ids = set(sorted(identifiers)[:EVALUATION_ANCHOR_COUNT])
+    input_columns = [
+        name
+        for name in full.column_names
+        if name.startswith(
+            (
+                "geometry.",
+                "particle.",
+                "position.",
+                "source.",
+                "environment.",
+                "observation.",
+                "derived.",
+            )
+        )
+        or name
+        in {
+            "state_id",
+            "physics_profile_id",
+            "fidelity_class",
+            "claim_ceiling",
+            "reference_block_id",
+            "particle_block_id",
+            "position_block_id",
+            "operator_block_id",
+            "numerical_receipt_ids",
+            "numerical_status",
+            "applicability_profile_id",
+            "operator_qualification_status",
+            "engine_version",
+            "schema_version",
+            "feature_version",
+            "config_hash",
+        }
+    ]
+    input_table = full.select(input_columns).append_column(
+        "is_intervention_anchor",
+        pa.array([identifier in anchor_ids for identifier in identifiers], type=pa.bool_()),
+    )
+    label_table = full.select(
+        [
+            "state_id",
+            "physics_profile_id",
+            "B_bg_W",
+            "S_W",
+            "C_r_W",
+            "C_i_W",
+            "Y_0_W",
+            "eta_real",
+            "eta_imag",
+            "eta_abs",
+            "result_hash",
+        ]
+    )
+    label_directory.mkdir(parents=True, exist_ok=True)
+    _write_table(label_directory / "labels.parquet.sealed", label_table)
+    label_manifest = write_release_manifest(
+        label_directory,
+        release_type="NODI_SEALED_LABEL_RELEASE",
+        primary_files=("labels.parquet.sealed",),
+        metadata={
+            **_formal_metadata(),
+            "release_name": label_name,
+            "state_count": EVALUATION_STATE_COUNT,
+            "seed": EVALUATION_SEED,
+            "full_transition_release_id": full_manifest["release_id"],
+            "access_state": "SEALED_OWNER_ONLY",
+            "delivery_state": "NOT_RELEASED_TO_DOWNSTREAM",
+            "sealing_method": "CONTENT_ADDRESSED_SEPARATE_OWNER_CUSTODY",
+        },
+    )
+    input_directory.mkdir(parents=True, exist_ok=True)
+    _write_table(input_directory / "inputs.parquet", input_table)
+    input_manifest = write_release_manifest(
+        input_directory,
+        release_type="NODI_EVALUATION_INPUT_RELEASE",
+        primary_files=("inputs.parquet",),
+        metadata={
+            **_formal_metadata(),
+            "release_name": input_name,
+            "state_count": EVALUATION_STATE_COUNT,
+            "intervention_anchor_count": EVALUATION_ANCHOR_COUNT,
+            "seed": EVALUATION_SEED,
+            "development_release_id": development["release_id"],
+            "label_commitment_release_id": label_manifest["release_id"],
+            "label_delivery_state": "SEALED_NOT_DELIVERED",
+            "development_evaluation_shared_state_count": 0,
+        },
+    )
+    for directory in (label_directory, input_directory):
+        report = validate_release(directory)
+        if not report.valid:
+            raise RuntimeError(f"evaluation release validation failed: {report.errors}")
+    shutil.rmtree(transition)
+    return input_manifest, label_manifest
+
+
+def _final_acceptance(features: tuple[str, str]) -> dict[str, Any]:
+    capability_ids = set(
+        pq.read_table(
+            RELEASE_ROOT / "NODI-CAPABILITY-SPRINT-V2" / "data.parquet",
+            columns=["state_id"],
+        )["state_id"].to_pylist()
+    )
+    quickstart_ids = set(
+        pq.read_table(
+            RELEASE_ROOT / "NODI-QUICKSTART-V2" / "data.parquet",
+            columns=["state_id"],
+        )["state_id"].to_pylist()
+    )
+    development_ids = set(
+        pq.read_table(
+            RELEASE_ROOT / "NODI-ATLAS-DEV-V2" / "data.parquet",
+            columns=["state_id"],
+        )["state_id"].to_pylist()
+    )
+    evaluation = pq.read_table(
+        RELEASE_ROOT / "NODI-ATLAS-EVAL-INPUTS-V2" / "inputs.parquet",
+        columns=["state_id", "is_intervention_anchor"],
+    )
+    evaluation_ids = evaluation["state_id"].to_pylist()
+    label_ids = pq.read_table(
+        RELEASE_ROOT / "NODI-ATLAS-EVAL-LABELS-V2.sealed" / "labels.parquet.sealed",
+        columns=["state_id"],
+    )["state_id"].to_pylist()
+    pairs = pq.read_table(
+        RELEASE_ROOT / "NODI-ATLAS-DEV-INTERVENTIONS-V2" / "pairs.parquet",
+        columns=["pair_id", "feature"],
+    )
+    feature_counts = {
+        feature: pairs["feature"].to_pylist().count(feature)
+        for feature in sorted(set(pairs["feature"].to_pylist()))
+    }
+    acceptance = {
+        "quickstart_is_capability_subset_without_recompute": (
+            len(quickstart_ids) == QUICKSTART_STATE_COUNT
+            and quickstart_ids <= capability_ids
+        ),
+        "development_unique_state_count": len(development_ids),
+        "evaluation_unique_state_count": len(set(evaluation_ids)),
+        "development_evaluation_shared_state_count": len(
+            development_ids.intersection(evaluation_ids)
+        ),
+        "evaluation_input_label_identity_and_order_match": evaluation_ids == label_ids,
+        "evaluation_intervention_anchor_count": sum(
+            evaluation["is_intervention_anchor"].to_pylist()
+        ),
+        "development_intervention_unique_pair_count": len(
+            set(pairs["pair_id"].to_pylist())
+        ),
+        "development_intervention_feature_counts": feature_counts,
+        "all_release_profiles": [FORMAL_PROFILE],
+        "v1_data_or_feature_selection_imported": False,
+    }
+    expected_features = {
+        feature: DEVELOPMENT_PAIR_COUNT // len(features) for feature in features
+    }
+    if not (
+        acceptance["quickstart_is_capability_subset_without_recompute"]
+        and acceptance["development_unique_state_count"] == DEVELOPMENT_STATE_COUNT
+        and acceptance["evaluation_unique_state_count"] == EVALUATION_STATE_COUNT
+        and acceptance["development_evaluation_shared_state_count"] == 0
+        and acceptance["evaluation_input_label_identity_and_order_match"]
+        and acceptance["evaluation_intervention_anchor_count"] == EVALUATION_ANCHOR_COUNT
+        and acceptance["development_intervention_unique_pair_count"]
+        == DEVELOPMENT_PAIR_COUNT
+        and feature_counts == expected_features
+    ):
+        raise RuntimeError(f"v2 cross-release acceptance failed: {acceptance}")
+    return acceptance
+
+
+def run_all(seed: int) -> dict[str, Any]:
+    capability_directory = RELEASE_ROOT / "NODI-CAPABILITY-SPRINT-V2"
+    capability = _build_nested_release(
+        capability_directory,
+        release_name="NODI-CAPABILITY-SPRINT-V2",
+        reference_count=CAPABILITY_REFERENCE_BLOCKS,
+        seed=seed,
+    )
+    qualification = _build_capability_freeze(capability, seed)
+    quickstart = _build_quickstart(capability)
+    development_directory = RELEASE_ROOT / "NODI-ATLAS-DEV-V2"
+    development = _build_nested_release(
+        development_directory,
+        release_name="NODI-ATLAS-DEV-V2",
+        reference_count=DEVELOPMENT_REFERENCE_BLOCKS,
+        seed=DEVELOPMENT_SEED,
+    )
+    interventions = _build_interventions(development, qualification)
+    evaluation_inputs, evaluation_labels = _build_evaluation_releases(development)
+    directories = {
+        "capability_sprint": capability_directory,
+        "qualification_profile": RELEASE_ROOT / "NODI-QUALIFICATION-PROFILE-V2",
+        "quickstart": RELEASE_ROOT / "NODI-QUICKSTART-V2",
+        "development_atlas": development_directory,
+        "development_interventions": (
+            RELEASE_ROOT / "NODI-ATLAS-DEV-INTERVENTIONS-V2"
+        ),
+        "evaluation_inputs": RELEASE_ROOT / "NODI-ATLAS-EVAL-INPUTS-V2",
+        "evaluation_labels": RELEASE_ROOT / "NODI-ATLAS-EVAL-LABELS-V2.sealed",
+    }
+    manifests = {
+        "capability_sprint": capability,
+        "qualification_profile": qualification,
+        "quickstart": quickstart,
+        "development_atlas": development,
+        "development_interventions": interventions,
+        "evaluation_inputs": evaluation_inputs,
+        "evaluation_labels": evaluation_labels,
+    }
+    releases = {
+        name: _release_summary(directories[name], manifest)
+        for name, manifest in manifests.items()
+    }
+    if not all(release["valid"] for release in releases.values()):
+        raise RuntimeError("one or more v2 releases failed final validation")
+    selected_features = (
+        str(qualification["metadata"]["primary_exposure_family"]),
+        str(qualification["metadata"]["replication_exposure_family"]),
+    )
+    acceptance = _final_acceptance(selected_features)
+    receipt = {
+        "manifest_schema_version": 2,
+        "phase": "R4_FORMAL_REFERENCE_RELEASES",
+        "status": "PASS",
+        "profile": FORMAL_PROFILE,
+        "release_root": "releases/nodi-v2",
+        "maximum_workers": 24,
+        "selected_workers": 1,
+        "committed_memory_limit_bytes": COMMITTED_MEMORY_LIMIT_BYTES,
+        "qualification_report_sha256": FORMAL_QUALIFICATION_REPORT_SHA256,
+        "feature_catalogue_hash": capabilities().catalogue_hash,
+        "primary_exposure_family": qualification["metadata"][
+            "primary_exposure_family"
+        ],
+        "replication_exposure_family": qualification["metadata"][
+            "replication_exposure_family"
+        ],
+        "feature_campaign_state": "FROZEN_SINGLE_FORMAL_SPRINT",
+        "development_size_state": "FROZEN_SINGLE_524288_STATE_ATLAS",
+        "label_delivery_state": "SEALED_NOT_DELIVERED",
+        "paper2_final_data_state": "ELIGIBLE_FORMAL_M1_REFERENCE_WITH_DECLARED_LIMITS",
+        "acceptance": acceptance,
+        "releases": releases,
+    }
+    _atomic_json(RECEIPT_PATH, receipt)
+    return receipt
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--phase", choices=("sprint",), default="sprint")
+    parser.add_argument("--phase", choices=("sprint", "all"), default="all")
     parser.add_argument("--seed", type=int, default=2026081802)
     args = parser.parse_args()
-    receipt = run_sprint(args.seed)
+    receipt = run_sprint(args.seed) if args.phase == "sprint" else run_all(args.seed)
     print(canonical_json({"status": receipt["status"], "phase": receipt["phase"]}))
     return 0
 

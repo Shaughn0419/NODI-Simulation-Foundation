@@ -154,10 +154,14 @@ def validate_release(path: str | Path) -> ValidationReport:
         if sha256_file(artifact) != row.get("sha256"):
             errors.append(f"E_RELEASE_HASH_MISMATCH:{row['path']}")
     metadata = manifest.get("metadata")
-    if manifest.get("engine_version") == "2.0.0" and release_type in {
+    profile_bound_release_types = {
         "NODI_DATASET_RELEASE",
         "NODI_PAIR_RELEASE",
-    }:
+        "NODI_QUALIFICATION_PROFILE_RELEASE",
+        "NODI_EVALUATION_INPUT_RELEASE",
+        "NODI_SEALED_LABEL_RELEASE",
+    }
+    if manifest.get("engine_version") == "2.0.0" and release_type in profile_bound_release_types:
         if not isinstance(metadata, dict):
             errors.append("E_RELEASE_PROFILE_METADATA_MISSING")
         else:
@@ -177,7 +181,13 @@ def validate_release(path: str | Path) -> ValidationReport:
                     errors.append("E_RELEASE_FORMAL_QUALIFICATION_BINDING_MISMATCH")
             elif metadata.get("paper2_final_truth_eligible") is not False:
                 errors.append("E_RELEASE_FAST_CONTROL_PAPER2_ELIGIBILITY_INVALID")
-            if files and isinstance(files[0], dict) and isinstance(files[0].get("path"), str):
+            requires_profile_column = release_type != "NODI_QUALIFICATION_PROFILE_RELEASE"
+            if (
+                requires_profile_column
+                and files
+                and isinstance(files[0], dict)
+                and isinstance(files[0].get("path"), str)
+            ):
                 try:
                     import pyarrow as pa
                     import pyarrow.parquet as pq
