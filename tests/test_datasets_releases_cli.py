@@ -10,6 +10,7 @@ import pyarrow.parquet as pq
 import pytest
 import yaml
 
+import nodi_foundation.resources as resource_contract
 from nodi_foundation import (
     DatasetSpec,
     ExecutionSpec,
@@ -81,6 +82,37 @@ def test_v5_fragment_consolidation_stabilizes_optional_reason_schema(tmp_path) -
         None,
         "REFERENCE_FIELD_BELOW_THRESHOLD",
     ]
+
+
+def test_v5_formal_worker_reserve_enforces_four_worker_launch_headroom(monkeypatch) -> None:
+    builder = runpy.run_path(str(ROOT / "tools/build_reference_releases_v5.py"))
+    reserve = builder["FORMAL_WORKER_RESERVE_BYTES"]
+    headroom = builder["FULL_RUN_LAUNCH_HEADROOM_BYTES"]
+    assert reserve == 16_000_000_000
+
+    monkeypatch.setattr(
+        resource_contract,
+        "system_committed_memory_bytes",
+        lambda: 115_999_999_999,
+    )
+    snapshot = builder["assert_resource_budget"](
+        4,
+        worker_reserve_bytes=reserve,
+        launch_headroom_bytes=headroom,
+    )
+    assert snapshot.projected_committed_memory_bytes == 209_999_999_999
+
+    monkeypatch.setattr(
+        resource_contract,
+        "system_committed_memory_bytes",
+        lambda: 116_000_000_000,
+    )
+    with pytest.raises(FoundationError, match="projected committed memory"):
+        builder["assert_resource_budget"](
+            4,
+            worker_reserve_bytes=reserve,
+            launch_headroom_bytes=headroom,
+        )
 
 
 def test_state_schema_accepts_canonical_state() -> None:

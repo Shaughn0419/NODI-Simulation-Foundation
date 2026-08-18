@@ -80,6 +80,7 @@ REFERENCE_CHUNK = 8
 DEVELOPMENT_SEED = 2026081921
 EVALUATION_SEED = 2026081922
 PAIR_CHUNK = 512
+FORMAL_WORKER_RESERVE_BYTES = 16_000_000_000
 WHEEL_NAME = "nodi_foundation-5.0.0-py3-none-any.whl"
 DEFAULT_BOUNDARY_POLICY = "UNPOLARIZED_BOUNDARY_V1"
 EVALUATION_BOUNDARY_POLICY = "PARTIALLY_POLARIZED_BOUNDARY_V1"
@@ -718,7 +719,7 @@ def _build_nested_release(
             return manifest
     assert_resource_budget(
         workers,
-        worker_reserve_bytes=512 * 1024 * 1024,
+        worker_reserve_bytes=FORMAL_WORKER_RESERVE_BYTES,
         launch_headroom_bytes=FULL_RUN_LAUNCH_HEADROOM_BYTES,
     )
     references = _reference_blocks(
@@ -930,7 +931,7 @@ def _capability_effects(
             raise RuntimeError(f"insufficient legal formal pairs for {feature}: {accepted}")
     assert_resource_budget(
         workers,
-        worker_reserve_bytes=512 * 1024 * 1024,
+        worker_reserve_bytes=FORMAL_WORKER_RESERVE_BYTES,
         launch_headroom_bytes=FULL_RUN_LAUNCH_HEADROOM_BYTES,
     )
     pair_states = tuple(
@@ -943,7 +944,7 @@ def _capability_effects(
         execution=ExecutionSpec(
             workers=workers,
             chunk_size=len(pair_states),
-            worker_reserve_bytes=512 * 1024 * 1024,
+            worker_reserve_bytes=FORMAL_WORKER_RESERVE_BYTES,
         ),
     )
     pair_results = list(zip(batch.results[::2], batch.results[1::2], strict=True))
@@ -1400,7 +1401,7 @@ def _build_interventions(
 
     assert_resource_budget(
         workers,
-        worker_reserve_bytes=512 * 1024 * 1024,
+        worker_reserve_bytes=FORMAL_WORKER_RESERVE_BYTES,
         launch_headroom_bytes=FULL_RUN_LAUNCH_HEADROOM_BYTES,
     )
     if workers == 1:
@@ -1414,25 +1415,41 @@ def _build_interventions(
             os.environ[name] = "1"
         try:
             with ProcessPoolExecutor(max_workers=workers) as executor:
-                future_jobs = {
-                    executor.submit(_write_pair_fragment, str(fragment), chunk): (
-                        offset,
-                        len(chunk),
-                    )
-                    for offset, fragment, chunk in missing
-                }
-                for future in future_jobs:
-                    offset, pair_count = future_jobs[future]
-                    future.result()
-                    record_completion(offset, pair_count)
+                pending: dict[Future[tuple[str, int]], tuple[int, int]] = {}
+                cursor = 0
+
+                def submit_available() -> None:
+                    nonlocal cursor
+                    while cursor < len(missing) and len(pending) < workers:
+                        offset, fragment, chunk = missing[cursor]
+                        cursor += 1
+                        future = executor.submit(_write_pair_fragment, str(fragment), chunk)
+                        pending[future] = (offset, len(chunk))
+
+                submit_available()
+                while pending:
+                    done, _ = wait(pending, return_when=FIRST_COMPLETED)
+                    for future in done:
+                        offset, pair_count = pending.pop(future)
+                        future.result()
+                        record_completion(offset, pair_count)
                     committed = system_committed_memory_bytes()
                     if (
                         committed is not None
                         and committed >= COMMITTED_MEMORY_EMERGENCY_STOP_BYTES
                     ):
-                        for pending in future_jobs:
-                            pending.cancel()
+                        for future in pending:
+                            future.cancel()
                         raise RuntimeError("emergency committed-memory stop reached")
+                    if committed is not None and committed >= COMMITTED_MEMORY_SOFT_STOP_BYTES:
+                        if cursor < len(missing):
+                            for future in pending:
+                                future.cancel()
+                            raise RuntimeError(
+                                "soft committed-memory stop reached before completion"
+                            )
+                    else:
+                        submit_available()
         finally:
             for name, value in previous_environment.items():
                 if value is None:
