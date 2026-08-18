@@ -2,8 +2,8 @@
 
 - Released product version: `v1.0.0` (immutable)
 - Target product version: `v2.0.0`
-- Current state: `R2_PASS_WITH_LIMITS_R3_ACTIVE`
-- Current batch: `R3_FORMAL_CAPABILITY_SPRINT`
+- Current state: `R3_PASS_R4_ACTIVE`
+- Current batch: `R4_FORMAL_REFERENCE_RELEASES`
 - Physics specification source: Paper 1 analytical M1 at
   `bb27a3ac882344e4ef26663102cd6c0a6882b675`
 - Foundation physics base: `ea01b875d031c18541bf740c3db0a21868d2e318`
@@ -25,7 +25,7 @@
 - v1 Paper 2 final eligibility: `false`
 - v2 default profile ID: `FORMAL_FIELD_COUPLING_M1_V2`
 - v2 release root: `releases/nodi-v2`
-- Paper 2 final intake: `HOLD_FOR_FORMAL_FIELD_COUPLING_M1_V2`
+- Paper 2 final intake: `HOLD_UNTIL_R4_REFERENCE_RELEASES_COMPLETE`
 
 ## Immutable v1 and binding correction
 
@@ -76,5 +76,15 @@ maximum middle-to-final complex-field refinement was 2.93%, and all direct
 parity plus extension invariants passed. The 4,096-state profiled cold pilot
 took 3.88 s and the warm operator-summary replay 0.203 s; reference and Mie each
 had 64 misses/960 hits, position-field had 1,024 misses/3,072 hits, and observed
-system committed-memory peak was about 47.0 GB. R3 may now run; v2 final data
-remain forbidden until the formal feature/exposure freeze is complete.
+system committed-memory peak was about 47.0 GB.
+
+R3 is complete. Its fresh 32,768-state formal sprint retained all 26 declared
+primitive features under the predeclared q90 complex-output-effect rule. The
+independently selected primary exposure is `particle_longitudinal`; the
+different-mechanism replication exposure is `pupil_inner_radius`. The sprint
+release ID is `29f5eab0578bec02e0727d43741e7413bef6141c66c6a856c6932e3565cb73bf`
+and the qualification-profile release ID is
+`64f069373f8987e20018c0ded115af83e1564fd915f40c40881780cf03f44c20`.
+Both validate against the exact R2 binding. R4 may now produce the fresh v2
+Quickstart, Development, intervention, Evaluation-input, and sealed-label
+products; Paper 2 intake remains held until that release set is complete.

@@ -90,5 +90,8 @@ The binding report is `formal_m1_v2_qualification_report.json`, file SHA-256
 `1b2059100a3d18260ca3e4c65f9ee9a72095e062063910a3a3651bd92f1b94f3`.
 Formal releases must bind that exact report, physics implementation, feature
 catalogue, qualification matrix, and parity panel; release validation rejects
-missing/mixed profile rows. No v2 dataset exists until the formal capability
-sprint independently freezes its retained features and exposure families.
+missing/mixed profile rows. The fresh 32,768-state formal sprint independently
+retained all 26 primitives and froze `particle_longitudinal` as primary and
+`pupil_inner_radius` as the different-mechanism replication exposure. Its
+release IDs and exact file hashes are recorded in `v2_release_manifest.json`;
+v1 feature selections were not imported.

@@ -82,12 +82,15 @@ nested production can reuse real intermediate blocks. Its declared ceiling is
 first-order M1 with explicit omissions; it is not full Maxwell, COMSOL,
 experimental, event-time, or detector-readout authority.
 
-R1 engine implementation and the single R2 qualification/pilot are complete.
-The 384-state panel passed with declared limits, and the 4,096-state nested
-pilot selected one worker and chunk size 1,024. The binding report SHA-256 is
+R1 engine implementation, the single R2 qualification/pilot, and the single R3
+formal capability sprint are complete. The 384-state panel passed with declared
+limits, and the 4,096-state nested pilot selected one worker and chunk size
+1,024. The binding report SHA-256 is
 `1b2059100a3d18260ca3e4c65f9ee9a72095e062063910a3a3651bd92f1b94f3`.
-No v2 reference dataset is issued before the formal capability sprint freezes
-the retained feature set and new exposure families.
+The fresh 32,768-state sprint retained all 26 primitives under its predeclared
+rule and froze `particle_longitudinal` as the primary exposure and
+`pupil_inner_radius` as the different-mechanism replication exposure. R4
+reference products are produced only from this formal v2 identity.
 
 ## Frozen v1 control products
 
@@ -137,9 +140,9 @@ full-wave, experimental, calibrated-detection, fabrication, yield, mobility,
 or COMSOL evidence. Dataset size and retained feature count are infrastructure
 properties, not independent scientific claims.
 
-Formal qualification, a nested performance pilot, a new capability sprint, and
-new v2 releases must complete in that order before any v2 final dataset is
-issued. The event-time/readout chain is outside this correction route.
+Formal qualification, the nested performance pilot, and the new capability
+sprint are complete. Fresh v2 reference releases remain the final data gate.
+The event-time/readout chain is outside this correction route.
 
 Copyright and reuse terms are in [LICENSE](LICENSE); citation metadata is in
 [CITATION.cff](CITATION.cff).
