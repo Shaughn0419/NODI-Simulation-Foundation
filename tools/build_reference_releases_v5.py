@@ -199,6 +199,20 @@ def _write_table(path: Path, table: pa.Table) -> None:
             os.unlink(temporary)
 
 
+def _stabilize_result_table_schema(table: pa.Table) -> pa.Table:
+    name = "coupling_undefined_reason"
+    index = table.schema.get_field_index(name)
+    if index < 0:
+        return table
+    field = table.schema.field(index)
+    if pa.types.is_string(field.type):
+        return table
+    if not pa.types.is_null(field.type):
+        raise RuntimeError(f"unexpected {name} type: {field.type}")
+    values = pa.array(table.column(index).to_pylist(), type=pa.string())
+    return table.set_column(index, pa.field(name, pa.string(), nullable=True), values)
+
+
 def _formal_metadata() -> dict[str, Any]:
     return {
         "profile": FORMAL_PROFILE,
@@ -656,7 +670,8 @@ def _write_nested_fragment(
     os.environ["OPENBLAS_NUM_THREADS"] = "1"
     states = _states_for_references(indexed_references)
     rows = [result_row(simulate_state(state)) for state in states]
-    _write_table(Path(path_text), pa.Table.from_pylist(rows))
+    table = _stabilize_result_table_schema(pa.Table.from_pylist(rows))
+    _write_table(Path(path_text), table)
     return path_text, len(rows)
 
 
@@ -668,7 +683,7 @@ def _consolidate(paths: list[Path], target: Path) -> None:
     writer: pq.ParquetWriter | None = None
     try:
         for path in paths:
-            table = pq.read_table(path)
+            table = _stabilize_result_table_schema(pq.read_table(path))
             if writer is None:
                 writer = pq.ParquetWriter(temporary, table.schema, compression="zstd")
             writer.write_table(table)

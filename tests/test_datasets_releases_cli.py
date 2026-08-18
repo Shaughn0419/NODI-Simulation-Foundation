@@ -5,6 +5,7 @@ import runpy
 from pathlib import Path
 
 import jsonschema
+import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 import yaml
@@ -54,6 +55,32 @@ def test_v5_release_boundary_campaigns_have_disjoint_state_and_split_identities(
     assert {state.split_group_id for state in development}.isdisjoint(
         state.split_group_id for state in evaluation
     )
+
+
+def test_v5_fragment_consolidation_stabilizes_optional_reason_schema(tmp_path) -> None:
+    builder = runpy.run_path(str(ROOT / "tools/build_reference_releases_v5.py"))
+    first = tmp_path / "first.parquet"
+    second = tmp_path / "second.parquet"
+    target = tmp_path / "combined.parquet"
+    pq.write_table(
+        pa.Table.from_pylist([{"value": 1, "coupling_undefined_reason": None}]),
+        first,
+    )
+    pq.write_table(
+        pa.Table.from_pylist(
+            [{"value": 2, "coupling_undefined_reason": "REFERENCE_FIELD_BELOW_THRESHOLD"}]
+        ),
+        second,
+    )
+
+    builder["_consolidate"]([first, second], target)
+
+    table = pq.read_table(target)
+    assert pa.types.is_string(table.schema.field("coupling_undefined_reason").type)
+    assert table["coupling_undefined_reason"].to_pylist() == [
+        None,
+        "REFERENCE_FIELD_BELOW_THRESHOLD",
+    ]
 
 
 def test_state_schema_accepts_canonical_state() -> None:
