@@ -1045,7 +1045,7 @@ def _release_summary(directory: Path, manifest: dict[str, Any]) -> dict[str, Any
         "path": str(directory.relative_to(ROOT)).replace("\\", "/"),
         "release_id": manifest["release_id"],
         "release_type": manifest["release_type"],
-        "manifest_sha256": canonical_sha256(manifest),
+        "manifest_sha256": _sha256(directory / "manifest.json"),
         "primary_files": manifest["files"],
         "valid": validate_release(directory).valid,
     }

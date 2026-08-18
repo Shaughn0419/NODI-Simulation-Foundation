@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import runpy
 from pathlib import Path
@@ -154,6 +155,24 @@ def test_dataset_release_is_deterministic_and_valid(tmp_path) -> None:
         )
         assert row["derived.minimum_effective_wall_margin_m"] >= -1.0e-21
         assert 0.0 < row["derived.collection_sine_in_fill"] < 1.0
+
+
+def test_v5_release_summary_binds_manifest_file_bytes(tmp_path) -> None:
+    builder = runpy.run_path(str(ROOT / "tools/build_reference_releases_v5.py"))
+    release = build_dataset(
+        DatasetSpec(
+            output_dir=tmp_path / "release",
+            state_count=2,
+            profile=FAST_CONTROL_PROFILE,
+            execution=ExecutionSpec(workers=1),
+        )
+    )
+    builder["_release_summary"].__globals__["ROOT"] = tmp_path
+
+    summary = builder["_release_summary"](release.path, release.manifest)
+
+    expected = hashlib.sha256((release.path / "manifest.json").read_bytes()).hexdigest()
+    assert summary["manifest_sha256"] == expected
 
 
 def test_pair_release_matches_schema(tmp_path) -> None:
