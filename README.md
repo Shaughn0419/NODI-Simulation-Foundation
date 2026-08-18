@@ -63,6 +63,8 @@ print(result.reference_design_id, result.split_group_id)
 
 The stable facade contains `simulate_state`, `simulate_batch`, `build_dataset`,
 `build_intervention_pairs`, `derive_observation`, and `validate_release`.
+The complete Python and CLI contract is documented in [`API.md`](API.md);
+`src/nodi_foundation/api.py` is the sole authoritative export list.
 `FAST_SCALING_CONTROL_V1` remains an explicitly selected software regression
 control and is never an automatic fallback.
 
