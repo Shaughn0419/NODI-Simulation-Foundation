@@ -1,10 +1,17 @@
 # NODI Simulation Foundation
 
-Standalone analytical simulation and immutable reference-data tooling for NODI
-research. Version 1.0.0 owns its analytical M1 implementation, public state
-model, batch runner, feature catalogue, and release format. It has no runtime
+Standalone simulation and immutable reference-data tooling for NODI research.
+The released 1.0.0 software and data remain byte-for-byte immutable, but their
+physics profile is now formally classified as `FAST_SCALING_CONTROL_V1`: a
+software, pipeline, and scaling control that is not eligible as Paper 2 final
+truth. The product-correction mainline is implementing
+`FORMAL_FIELD_COUPLING_M1_V2` for the 2.0.0 release. Neither line has a runtime
 dependency on Paper 1, Paper 2, the legacy simulator, COMSOL, or an external
 checkout.
+
+The machine-readable correction and exact immutable v1 bindings are in
+[v1_control_reclassification.json](v1_control_reclassification.json). The v1
+profile never serves as an automatic fallback for the formal profile.
 
 ## Install and quickstart
 
@@ -57,13 +64,12 @@ rows by [pair_schema.json](schemas/pair_schema.json).
 Stable error codes are `E_DOMAIN_INVALID`, `E_SCHEMA_INCOMPATIBLE`,
 `E_NUMERICAL_NONFINITE`, `E_RESOURCE_LIMIT`, and `E_RELEASE_INVALID`.
 
-## Frozen v1 capability and data products
+## Frozen v1 control products
 
-The sole capability sprint retained all 26 declared primitives and 20 derived
-descriptors. It selected `channel_width` as the primary exposure family and
-`particle_depth` as the different-mechanism replication family. This selection
-is frozen; v1 permits neither a second feature campaign nor Development
-doubling.
+The sole v1 capability sprint retained all 26 declared primitives and 20
+derived descriptors. Its `channel_width` and `particle_depth` selections are
+frozen control-route results only. They do not select v2 features, authorize
+Paper 2 intake, or establish that all 26 variables have formal-field support.
 
 | Product | Rows | Release ID |
 | --- | ---: | --- |
@@ -96,14 +102,19 @@ the closed-form kernel at about 15,876 states/s with one worker; multiprocessing
 was slower, so the formal releases correctly used one worker. Raw logs,
 checkpoints, rebuildable fragments, and large state tables are not committed.
 
-## Scientific boundary
+## Scientific boundary and correction state
 
-The frozen canonical point has implementation parity with the declared Paper 1
-analytical M1 product. Parameter extensions are analytical synthetic controls
-with `SUPPORTED_WITH_LIMITS` qualification. They are not full-wave,
-experimental, calibrated-detection, fabrication, yield, mobility, or COMSOL
-evidence. Dataset size and retained feature count are infrastructure properties,
-not independent scientific claims.
+The frozen v1 canonical point is retained as a single-point implementation
+regression. It is not domain validation. All v1 parameter extensions and data
+products are `SCALING_CONTROL_ONLY`, with claim ceiling
+`SOFTWARE_PIPELINE_AND_SCALING_CONTROL_ONLY`; they are not Paper 2 final truth,
+full-wave, experimental, calibrated-detection, fabrication, yield, mobility,
+or COMSOL evidence. Dataset size and retained feature count are infrastructure
+properties, not independent scientific claims.
+
+Formal qualification, a nested performance pilot, a new capability sprint, and
+new v2 releases must complete in that order before any v2 final dataset is
+issued. The event-time/readout chain is outside this correction route.
 
 Copyright and reuse terms are in [LICENSE](LICENSE); citation metadata is in
 [CITATION.cff](CITATION.cff).

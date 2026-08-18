@@ -1,11 +1,14 @@
-# NODI Foundation v1 reference datasets
+# NODI Foundation v1 control datasets
 
 ## Summary
 
-These releases contain deterministic synthetic outputs from NODI Simulation
-Foundation 1.0.0 using the analytical M1 applicability profile. They support
-software integration, controlled analytical studies, and fresh holdout
-workflows. They do not contain experimental, COMSOL, fabrication, mobility,
+These immutable releases contain deterministic outputs from NODI Simulation
+Foundation 1.0.0. Their embedded historical profile identifier is
+`M1_ANALYTICAL_SYNTHETIC_V1`; the binding current classification is
+`FAST_SCALING_CONTROL_V1`, with fidelity `SCALING_CONTROL_ONLY`, scientific role
+`SOFTWARE_AND_PIPELINE_CONTROL`, and `paper2_final_truth_eligible=false`.
+They support software integration and control-route regression. They do not
+contain Paper 2 final truth, experimental, COMSOL, fabrication, mobility,
 clogging, yield, or calibrated detector evidence.
 
 ## Provenance and composition
@@ -28,13 +31,19 @@ with 2,048 marked anchors, and a separately held 65,536-row label commitment.
 Exact release IDs, byte hashes, sizes, and local paths are recorded in
 `n3_release_manifest.json`.
 
+The original manifests and tables are not rewritten. The owner correction is
+an additive, content-bound overlay in `v1_control_reclassification.json`; it
+binds the v1 tag, commit, manifest hashes, and every release ID.
+
 ## Capability freeze
 
 One 32,768-state sprint retained all 26 primitives after legal one-axis effect
 checks. `channel_width` is the primary exposure family and `particle_depth` is
 the replication family from a different predeclared mechanism group. The
 selection does not use downstream model errors. No second feature campaign or
-Development-size doubling is permitted for v1.
+Development-size doubling is permitted for v1. The selected families are v1
+controls only and must not be imported into the v2 formal identity or used to
+select Paper 2 final features.
 
 ## Splits and leakage controls
 
@@ -58,11 +67,13 @@ input/label alignment, intervention allocation, and `1.0.0 / 1.0` identities.
 
 ## Intended and prohibited uses
 
-Appropriate uses include API/CLI integration, deterministic examples,
-analytical sensitivity work within the declared domains, and testing immutable
-data-release consumers. Do not treat these data as experimental truth,
-full-wave validation, material calibration, clinical evidence, fabrication
-feasibility, production yield, or authority to rank real devices.
+Appropriate uses include API/CLI integration, deterministic examples, scaling
+controls, and testing immutable data-release consumers. Do not import the v1
+Development, Evaluation, sealed labels, interventions, or selected exposure
+families as Paper 2 final data. Do not treat these data as scientific truth,
+formal-field domain validation, experimental truth, full-wave validation,
+material calibration, clinical evidence, fabrication feasibility, production
+yield, or authority to rank real devices.
 
 ## Access, license, and citation
 

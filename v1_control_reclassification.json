@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "status": "OWNER_CORRECTION_APPLIED",
+  "effective_date": "2026-08-18",
+  "correction_source": {
+    "path": "tmp/NODI_SIMULATION_FOUNDATION_CURRENT_PACKAGE/NODI_FOUNDATION_FORMAL_M1_CORRECTION_PATCH_CN_20260818.md",
+    "sha256": "a3080b8499657502e162c8d113aaa4d7c5dd2b2b3bd4b35af3a1f4f916bcdc95"
+  },
+  "immutable_v1_identity": {
+    "source_tag": "v1.0.0",
+    "source_commit": "62783ec20e718638660cc99d79cdafd1aa13bcce",
+    "release_manifest_sha256": "b02c879918bb165ea98eae09a670f253af59a6b90cffc3c64b57bad053598321",
+    "n3_release_manifest_sha256": "d03f760b9b357d361742b95861bb96e2e4ccc5936c67d376090269eb17f7e968",
+    "software_release_id": "6c5737d289949b6512fdd77db53c19707d038ac4b2644173b5b61feb907d720a",
+    "qualification_release_id": "4156bf4d1e733af10e5e79e1c0082ee7b30487103ac23844dcffbafe1191ebf8",
+    "capability_sprint_release_id": "da28445affa4665a3f2d59d298594d670ff3cdf1dbb53c971fe138c0bfcd6a83",
+    "quickstart_release_id": "a1b20622a0bd23079569135692c3f2f9e733a62a537cecb3faac3a310dcbfb8c",
+    "development_release_id": "3c483f971d21241f39ce5e941a7e4e375f8a952fd3f560dc6bd8fd1b73333cbb",
+    "development_intervention_release_id": "e3c620e49d60af6f62201ca67e6a2934eb639b2d988b42d490a59232080a2c01",
+    "evaluation_inputs_release_id": "2a1e513b1ff022d93e508d1a9d0bfa94782374ba14cc2ce706d3bc8f78fc2eff",
+    "evaluation_labels_release_id": "94930a90743425fdb6f729aacd2cad519012bf18cac1cc8cee99346bbe09c7e2",
+    "mutation_policy": "NO_OVERWRITE_NO_RESEAL_NO_REISSUE"
+  },
+  "profile_reclassification": {
+    "historical_embedded_profile_id": "M1_ANALYTICAL_SYNTHETIC_V1",
+    "current_profile_id": "FAST_SCALING_CONTROL_V1",
+    "fidelity_class": "SCALING_CONTROL_ONLY",
+    "scientific_role": "SOFTWARE_AND_PIPELINE_CONTROL",
+    "paper2_final_truth_eligible": false,
+    "paper2_import_eligible": false,
+    "claim_ceiling": "SOFTWARE_PIPELINE_AND_SCALING_CONTROL_ONLY",
+    "canonical_point_parity_role": "SINGLE_POINT_IMPLEMENTATION_REGRESSION_ONLY",
+    "exposure_family_role": "V1_CONTROL_ONLY_NOT_V2_SELECTION_AUTHORITY"
+  },
+  "paper2_final_intake": {
+    "state": "HOLD_FOR_FORMAL_FIELD_COUPLING_M1_V2",
+    "v1_development_data_allowed": false,
+    "v1_evaluation_inputs_allowed": false,
+    "v1_evaluation_labels_allowed": false,
+    "v1_exposure_families_allowed": false,
+    "automatic_fallback_to_v1_allowed": false
+  },
+  "target": {
+    "product_version": "2.0.0",
+    "default_physics_profile_id": "FORMAL_FIELD_COUPLING_M1_V2",
+    "schema_version": "2.0",
+    "feature_catalogue_version": "2.0",
+    "release_root": "releases/nodi-v2"
+  }
+}
