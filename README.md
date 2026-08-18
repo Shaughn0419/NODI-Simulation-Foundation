@@ -87,3 +87,11 @@ Large reproducible tables stay ignored under `releases/nodi-v5`; the tracked
 `v5_release_manifest.json` is their compact receipt. Only V5 remains in the
 active working tree. V4 is recoverable from Git tag `v4.0.0`, not duplicated
 beside the current product.
+
+## License and contributions
+
+Copyright 2026 Shaughn0419. Original code, documentation, and project-produced
+datasets are licensed under the [Apache License 2.0](LICENSE). Contributions follow
+[`CONTRIBUTING.md`](CONTRIBUTING.md) and are submitted under the same license.
+Third-party dependencies and referenced upstream materials remain under their
+own terms and are not relicensed by this repository.

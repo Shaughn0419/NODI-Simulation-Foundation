@@ -9,7 +9,7 @@ authors:
     alias: "Shaughn0419"
 repository-code: "https://github.com/Shaughn0419/NODI-Simulation-Foundation"
 url: "https://github.com/Shaughn0419/NODI-Simulation-Foundation"
-license: "LicenseRef-Proprietary"
+license: "Apache-2.0"
 keywords:
   - NODI
   - analytical simulation
